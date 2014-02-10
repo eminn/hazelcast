@@ -772,13 +772,18 @@ public class ClientMapTest {
         for (int i = 0; i < operationCount; i++) {
             map.put(i, i);
             map.get(i);
-            map.remove(i);
+            map.get("s"); // miss
         }
 
         assertEquals("put count",operationCount,localMapStats.getPutOperationCount());
-        assertEquals("get count",operationCount,localMapStats.getGetOperationCount());
+        assertEquals("get count",2 * operationCount,localMapStats.getGetOperationCount());
+        assertEquals("misses",operationCount, localMapStats.getMisses());
+        assertEquals("hits", operationCount, localMapStats.getHits());
+        for (int i = 0; i < operationCount; i++) {
+            map.remove(i);
+        }
         assertEquals("remove count",operationCount,localMapStats.getRemoveOperationCount());
-        assertTrue("put latency",  0 < localMapStats.getTotalPutLatency());
+        assertTrue("put latency", 0 < localMapStats.getTotalPutLatency());
         assertTrue("get latency", 0 < localMapStats.getTotalGetLatency());
         assertTrue("remove latency",0 < localMapStats.getTotalRemoveLatency());
     }

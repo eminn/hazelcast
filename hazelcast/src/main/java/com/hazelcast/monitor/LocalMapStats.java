@@ -90,6 +90,13 @@ public interface LocalMapStats extends LocalInstanceStats {
     long getHits();
 
     /**
+     * Returns the number of misses (null reads) of the locally owned entries.
+     *
+     * @return number of misses (null reads).
+     */
+    long getMisses();
+
+    /**
      * Returns the number of currently locked locally owned keys.
      *
      * @return number of locked entries.

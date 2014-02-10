@@ -30,6 +30,7 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
     private final AtomicLong lastAccessTime = new AtomicLong(0);
     private final AtomicLong lastUpdateTime = new AtomicLong(0);
     private final AtomicLong hits = new AtomicLong(0);
+    private final AtomicLong misses = new AtomicLong(0);
     private final AtomicLong numberOfOtherOperations = new AtomicLong(0);
     private final AtomicLong numberOfEvents = new AtomicLong(0);
     private final AtomicLong getCount = new AtomicLong(0);
@@ -85,8 +86,7 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
         out.writeLong(heapCost);
         boolean hasNearCache = nearCacheStats != null;
         out.writeBoolean(hasNearCache);
-        if(hasNearCache)
-        {
+        if (hasNearCache) {
             nearCacheStats.writeData(out);
         }
     }
@@ -117,8 +117,7 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
         maxRemoveLatency.set(in.readLong());
         heapCost = in.readLong();
         boolean hasNearCache = in.readBoolean();
-        if(hasNearCache)
-        {
+        if (hasNearCache) {
             nearCacheStats = new NearCacheStatsImpl();
             nearCacheStats.readData(in);
         }
@@ -202,6 +201,11 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
     }
 
     @Override
+    public long getMisses() {
+        return misses.get();
+    }
+
+    @Override
     public long getLockedEntryCount() {
         return lockedEntryCount;
     }
@@ -244,6 +248,10 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
         getCount.incrementAndGet();
         totalGetLatencies.addAndGet(latency);
         maxGetLatency.set(Math.max(maxGetLatency.get(), latency));
+    }
+
+    public void incrementMisses(int number) {
+        misses.addAndGet(number);
     }
 
     @Override
@@ -329,6 +337,7 @@ public class LocalMapStatsImpl implements LocalMapStats, IdentifiedDataSerializa
                 "lastAccessTime=" + lastAccessTime +
                 ", lastUpdateTime=" + lastUpdateTime +
                 ", hits=" + hits +
+                ", misses=" + misses +
                 ", numberOfOtherOperations=" + numberOfOtherOperations +
                 ", numberOfEvents=" + numberOfEvents +
                 ", getCount=" + getCount +

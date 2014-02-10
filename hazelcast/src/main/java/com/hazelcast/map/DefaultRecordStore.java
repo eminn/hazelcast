@@ -330,6 +330,9 @@ public class DefaultRecordStore implements RecordStore {
         checkIfLoaded();
         Record record = records.get(dataKey);
         if (record == null) {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             record = getRecordInternal(dataKey, true);
         } else {
             accessRecord(record);
@@ -439,6 +442,9 @@ public class DefaultRecordStore implements RecordStore {
         Record record = records.get(dataKey);
         Object oldValue = null;
         if (record == null) {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             if (mapContainer.getStore() != null) {
                 oldValue = mapContainer.getStore().load(mapService.toObject(dataKey));
                 if (oldValue != null) {
@@ -491,6 +497,9 @@ public class DefaultRecordStore implements RecordStore {
         Object oldValue = null;
         boolean removed = false;
         if (record == null) {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             if (mapContainer.getStore() != null) {
                 oldValue = mapContainer.getStore().load(mapService.toObject(dataKey));
             }
@@ -517,6 +526,9 @@ public class DefaultRecordStore implements RecordStore {
         Record record = records.get(dataKey);
         Object value = null;
         if (record == null) {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             if (mapContainer.getStore() != null) {
                 value = mapContainer.getStore().load(mapService.toObject(dataKey));
                 if (value != null) {
@@ -546,6 +558,9 @@ public class DefaultRecordStore implements RecordStore {
         for (Data dataKey : keySet) {
             Record record = records.get(dataKey);
             if (record == null) {
+                if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                    mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+                }
                 if (mapContainer.getStore() != null) {
                     keyMapForLoader.put(mapService.toObject(dataKey), dataKey);
                 }
@@ -750,6 +765,9 @@ public class DefaultRecordStore implements RecordStore {
             setRecordValue(record, value);
             updateSizeEstimator(calculateRecordSize(record));
         } else {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             return null;
         }
         saveIndex(record);
@@ -760,8 +778,12 @@ public class DefaultRecordStore implements RecordStore {
     public boolean replace(Data dataKey, Object testValue, Object newValue) {
         checkIfLoaded();
         Record record = records.get(dataKey);
-        if (record == null)
+        if (record == null) {
+            if (mapContainer.getMapConfig().isStatisticsEnabled()) {
+                mapService.getLocalMapStatsImpl(name).incrementMisses(1);
+            }
             return false;
+        }
         if (mapService.compare(name, record.getValue(), testValue)) {
             newValue = mapService.interceptPut(name, record.getValue(), newValue);
             newValue = writeMapStore(dataKey, newValue, record);

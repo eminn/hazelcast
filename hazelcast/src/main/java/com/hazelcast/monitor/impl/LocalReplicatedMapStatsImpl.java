@@ -30,6 +30,7 @@ public class LocalReplicatedMapStatsImpl implements LocalReplicatedMapStats, Ide
     private final AtomicLong lastAccessTime = new AtomicLong(0);
     private final AtomicLong lastUpdateTime = new AtomicLong(0);
     private final AtomicLong hits = new AtomicLong(0);
+    private final AtomicLong misses = new AtomicLong(0);
     private final AtomicLong numberOfOtherOperations = new AtomicLong(0);
     private final AtomicLong numberOfEvents = new AtomicLong(0);
     private final AtomicLong numberOfReplicationEvents = new AtomicLong(0);
@@ -164,6 +165,11 @@ public class LocalReplicatedMapStatsImpl implements LocalReplicatedMapStats, Ide
         return hits.get();
     }
 
+    @Override
+    public long getMisses() {
+        return misses.get();
+    }
+
     public void setHits(long hits) {
         this.hits.set(hits);
     }
@@ -268,6 +274,9 @@ public class LocalReplicatedMapStatsImpl implements LocalReplicatedMapStats, Ide
 
     public void incrementReceivedEvents() {
         numberOfEvents.incrementAndGet();
+    }
+    public void incrementMisses() {
+        misses.incrementAndGet();
     }
 
     @Override
