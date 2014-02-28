@@ -40,9 +40,7 @@ import static com.hazelcast.query.SampleObjects.Employee;
 import static com.hazelcast.query.SampleObjects.State;
 import static java.lang.Boolean.FALSE;
 import static java.lang.Boolean.TRUE;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.*;
 
 @RunWith(HazelcastSerialClassRunner.class)
 @Category(QuickTest.class)
@@ -50,13 +48,13 @@ public class PredicatesTest {
 
     @Test
     public void testSql() {
+
+        assertEquals("NOT(name LIKE 'J%')", sql("name not like 'J%'"));
+        assertEquals("NOT(name REGEX 'J.*')", sql("name not regex 'J.*'"));
+
         Employee value = new Employee("abc-123-xvz", 34, true, 10D);
         value.setState(State.STATE2);
         Employee nullNameValue = new Employee(null, 34, true, 10D);
-        assertTrue(new SqlPredicate("state == TestUtil.State.STATE2").apply(createEntry("1", value)));
-        assertTrue(new SqlPredicate("state == " + State.STATE2).apply(createEntry("1", value)));
-        assertFalse(new SqlPredicate("state == TestUtil.State.STATE1").apply(createEntry("1", value)));
-        assertFalse(new SqlPredicate("state == TestUtil.State.STATE1").apply(createEntry("1", nullNameValue)));
         assertTrue(new SqlPredicate("createDate >= '" + new SimpleDateFormat(DateHelperTest.DATE_FORMAT, Locale.US).format(new Date(0)) + "'").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("sqlDate >= '" + new java.sql.Date(0) + "'").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("date >= '" + new Timestamp(0) + "'").apply(createEntry("1", value)));
@@ -75,9 +73,6 @@ public class PredicatesTest {
         assertTrue(new SqlPredicate("(age >= " + 20 + ") AND (age <= " + 40 + ")").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("(age >= " + 20 + ") AND (age <= " + 34 + ")").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("(age >= " + 34 + ") AND (age <= " + 35 + ")").apply(createEntry("1", value)));
-        assertTrue(new SqlPredicate("age IN (" + 34 + ", " + 35 + ")").apply(createEntry("1", value)));
-        assertTrue(new SqlPredicate(" (name LIKE 'abc-%') AND (age <= " + 40 + ")").apply(createEntry("1", value)));
-        assertTrue(new SqlPredicate(" (name REGEX 'abc-.*') AND (age <= " + 40 + ")").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("age = -33").apply(createEntry("1", new Employee("abc-123-xvz", -33, true, 10D))));
         assertFalse(new SqlPredicate("age = 33").apply(createEntry("1", value)));
         assertTrue(new SqlPredicate("age = 34").apply(createEntry("1", value)));

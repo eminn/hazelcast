@@ -1,0 +1,488 @@
+options {
+  DEBUG_PARSER = true; // Set to false to turn off token printing
+  IGNORE_CASE = true; // Set to false to turn off token printing
+  STATIC = false;
+}
+
+PARSER_BEGIN(SQLParser)
+package com.hazelcast.query.parser;
+import com.hazelcast.query.Predicate;
+import com.hazelcast.query.Predicates;
+import java.io.StringReader;
+import java.io.Reader;
+import java.util.ArrayList;
+
+
+public class SQLParser {
+    public SQLParser(String s)
+    {
+        this((Reader)(new StringReader(s)));
+    }
+
+    public static Predicate predicate;
+    public Predicate getPredicate()
+    {
+        return predicate;
+    }
+
+    public static void main(String args[]) {
+    try {
+      new SQLParser(System.in).Lexer();
+    }
+    catch(ParseException e) {
+      System.out.println("Parse fail");
+    }
+    }
+}
+PARSER_END(SQLParser)
+TOKEN : {
+   < AND: "and">
+ | < OR:  "or">
+ | < NOT:  "not">
+ | < IN:  "in">
+ | < BETWEEN:  "between">
+ | < LIKE:  "like">
+ | < ILIKE:  "ilike">
+ | < REGEX:  "regex">
+ | < EQUALS: <EQ> | <DOUBLEEQ>>
+ | < #EQ: "=">
+ | < #DOUBLEEQ: "==">
+ | < NOTEQUAL: "!=">
+ | < GREATER: ">">
+ | < LESSER: "<">
+ | < GREATER_EQ: ">=">
+ | < LESSER_EQ: "<=">
+ | < LPAREN: "(" >
+ | < RPAREN: ")" >
+ | < #DIGIT: ["0"-"9"] >
+ | < NULL: "NULL" >
+ | < NUM: (<DIGIT>)+ | ["-"] (<DIGIT>)+ >
+ | < ID: ["a"-"z","_"] ( ["a"-"z","_","."] | <DIGIT>)* >
+ | < SINGLE_QUOTED_STRING: "\'" (~["\'"])+ "\'" >
+ | < QUOTED_STRING: "\"" (~["\""])+ "\"" >
+ | < FLOAT: (["0"-"9"])+ "." (["0"-"9"])* (["e","E"] (["+","-"])? (["0"-"9"])+)?
+          | "." (["0"-"9"])+ (["e","E"] (["+","-"])? (["0"-"9"])+)?
+          | (["0"-"9"])+ ["e","E"] (["+","-"])? (["0"-"9"])+ >
+
+
+ }
+
+SKIP: {
+   " " | "\t" | "\n" | "\r"
+}
+
+Predicate Lexer() :
+{
+Predicate p;
+}
+{ (p=expression())+ <EOF>
+ {return p;}
+ }
+Predicate expression() :
+{
+Predicate p;
+}
+{
+
+
+
+    LOOKAHEAD( <ID> <IN>)
+    p = inPredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    LOOKAHEAD( <ID> <BETWEEN>)
+    p = betweenPredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    LOOKAHEAD( predicate() <AND>)
+    p = andPredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    LOOKAHEAD( predicate() <OR>)
+    p = orPredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    LOOKAHEAD( <NOT> predicate() )
+    p = notPredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    LOOKAHEAD( <ID> <NOT> )
+    p = notInsidePredicate()
+    {
+        System.out.println(p);
+        return p;
+    }
+    |
+    p = predicate()
+            (
+              ( <AND>| <OR>)
+              predicate()
+            )*
+            { return p;}
+
+}
+
+Predicate andPredicate():
+{
+Predicate p1;
+Predicate p2;
+}
+{
+    p1=predicate() <AND> p2=predicate()
+    {
+        return new Predicates.AndPredicate(p1,p2);
+    }
+
+}
+Predicate notPredicate():
+{
+Predicate p1;
+
+}
+{
+    <NOT> p1=predicate()
+    {
+        return new Predicates.NotPredicate(p1);
+    }
+
+}
+Predicate notInsidePredicate():
+{
+Token field;
+Predicate p1;
+Token value;
+ArrayList<Comparable> values;
+
+}
+{
+    field=<ID>
+    <NOT>
+    (
+    LOOKAHEAD(<LIKE>)
+    <LIKE>
+    value = value()
+    {
+        p1 = new Predicates.LikePredicate(field.image,value.image);
+        return new Predicates.NotPredicate(p1);
+    }
+    |
+    LOOKAHEAD(<REGEX>)
+    <REGEX>
+    value = value()
+    {
+        p1 = new Predicates.RegexPredicate(field.image,value.image);
+        return new Predicates.NotPredicate(p1);
+    }
+    |
+    LOOKAHEAD(<IN>)
+    <IN>
+    <LPAREN> values = listOfValues() <RPAREN>
+    {
+        p1 = new Predicates.InPredicate(field.image,values.toArray(new Comparable[values.size()]));
+        return new Predicates.NotPredicate(p1);
+    }
+    |
+    LOOKAHEAD(<BETWEEN>)
+    <BETWEEN>
+    {Token value1;Token value2;}
+    value1 = value()
+    <AND>
+    value2 = value()
+    {
+        p1 = new Predicates.BetweenPredicate(field.image,value1.image,value2.image);
+        return new Predicates.NotPredicate(p1);
+    }
+   )
+
+
+}
+Predicate orPredicate():
+{
+Predicate p1;
+Predicate p2;
+}
+{
+    p1=predicate() <OR> p2=predicate()
+    {
+        return new Predicates.OrPredicate(p1,p2);
+    }
+
+}
+Predicate predicate() :
+{
+Predicate predicate;
+}
+{
+        LOOKAHEAD( <ID> <EQUALS>)
+        predicate = equalPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <NOTEQUAL>)
+        predicate = notEqualPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <GREATER>)
+        predicate = greaterThanPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <GREATER_EQ>)
+        predicate = greaterThanEqualPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <LESSER>)
+        predicate = lesserThanPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <LESSER_EQ>)
+        predicate = lesserThanEqualPredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <LIKE>)
+        predicate = likePredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <ILIKE>)
+        predicate = iLikePredicate()
+        { return predicate;}
+        |
+        LOOKAHEAD( <ID> <REGEX>)
+        predicate = regexPredicate()
+        { return predicate;}
+        |
+       <LPAREN> predicate = expression() <RPAREN>
+       { return predicate;}
+}
+
+Predicate equalPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <EQUALS>
+    value = value()
+   {
+    predicate = new Predicates.EqualPredicate(field.image,value.image);
+    return predicate;
+   }
+
+}
+Predicate notEqualPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <NOTEQUAL>
+    value = value()
+   {
+    predicate =  new Predicates.NotEqualPredicate(field.image,value.image);
+    return predicate;
+   }
+
+}
+Predicate greaterThanPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <GREATER>
+    value = value()
+   {
+    predicate =  new Predicates.GreaterLessPredicate(field.image,value.image,false,false);
+    return predicate;
+   }
+
+}
+Predicate greaterThanEqualPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <GREATER_EQ>
+    value = value()
+   {
+    predicate =  new Predicates.GreaterLessPredicate(field.image,value.image,true,false);
+    return predicate;
+   }
+
+}
+
+Predicate lesserThanPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <LESSER>
+    value = value()
+   {
+    predicate = new Predicates.GreaterLessPredicate(field.image,value.image,false,true);
+    return predicate;
+   }
+
+}
+Predicate lesserThanEqualPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <LESSER_EQ>
+    value = value()
+   {
+    predicate = new Predicates.GreaterLessPredicate(field.image,value.image,true,true);
+    return predicate;
+   }
+
+}
+
+Predicate likePredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <LIKE>
+    value = value()
+   {
+    predicate = new Predicates.LikePredicate(field.image,value.image);
+    return predicate;
+   }
+
+}
+Predicate iLikePredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <ILIKE>
+    value = value()
+   {
+    predicate = new Predicates.ILikePredicate(field.image,value.image);
+    return predicate;
+   }
+
+}
+Predicate inPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+ ArrayList<Comparable> values=null;
+
+}
+{
+    field=<ID>
+    <IN>
+    <LPAREN> values = listOfValues() <RPAREN>
+   {
+    predicate = new Predicates.InPredicate(field.image,values.toArray(new Comparable[values.size()]));
+    return predicate;
+   }
+
+}
+Predicate regexPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value=null;
+}
+{
+    field=<ID>
+    <REGEX>
+    value = value()
+   {
+    predicate = new Predicates.RegexPredicate(field.image,value.image);
+    return predicate;
+   }
+
+}
+Predicate betweenPredicate() :
+{
+ Token field=null;
+ Predicate predicate=null;
+ Token value1=null;
+ Token value2=null;
+}
+{
+    field=<ID>
+    <BETWEEN>
+    value1 = value()
+    <AND>
+    value2 = value()
+   {
+    predicate = new Predicates.BetweenPredicate(field.image,value1.image,value2.image);
+    return predicate;
+   }
+
+}
+ArrayList listOfValues():
+{
+ArrayList values = new ArrayList();
+Token val = null;
+}
+{
+      val = value(){values.add(val.image);} ( "," val=value(){values.add(val.image);} )*
+      { return values;}
+}
+
+Token value():
+{
+Token val;
+}
+{
+   (
+   val=<ID>{return val;}
+   | val=<QUOTED_STRING>{val.image=clearQuotes(val.image);return val;}
+   | val=<SINGLE_QUOTED_STRING>{val.image=clearQuotes(val.image);return val;}
+   | val=<NUM>{return val;}
+   | val=<FLOAT>{return val;}
+   | val=<NULL>{val.image = null;return val;}
+
+    )
+}
+
+
+
+String clearQuotes(String value):
+{
+}
+{
+    {return value.substring(1,value.length()-1);}
+}
+

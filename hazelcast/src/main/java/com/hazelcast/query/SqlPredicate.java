@@ -21,6 +21,8 @@ import com.hazelcast.nio.ObjectDataOutput;
 import com.hazelcast.query.impl.IndexImpl;
 import com.hazelcast.query.impl.QueryContext;
 import com.hazelcast.query.impl.QueryableEntry;
+import com.hazelcast.query.parser.ParseException;
+import com.hazelcast.query.parser.SQLParser;
 
 import java.io.IOException;
 import java.util.*;
@@ -86,138 +88,14 @@ public class SqlPredicate extends AbstractPredicate implements IndexAwarePredica
     }
 
     private Predicate createPredicate(String sql) {
-        Map<String, String> mapPhrases = new HashMap<String, String>(1);
-        int apoIndex = getApostropheIndex(sql, 0);
-        if (apoIndex != -1) {
-            int phraseId = 0;
-            StringBuilder newSql = new StringBuilder();
-            while (apoIndex != -1) {
-                phraseId++;
-                int start = apoIndex + 1;
-                int end = getApostropheIndexIgnoringDoubles(sql, apoIndex + 1);
-                if (end == -1) {
-                    throw new RuntimeException("Missing ' in sql");
-                }
-                String phrase = removeEscapes(sql.substring(start, end));
+        final SQLParser parser = new SQLParser(sql);
+        try {
+             return parser.Lexer();
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return null;
+        }
 
-                String key = "$" + phraseId;
-                mapPhrases.put(key, phrase);
-                String before = sql.substring(0, apoIndex);
-                sql = sql.substring(end + 1);
-                newSql.append(before);
-                newSql.append(key);
-                apoIndex = getApostropheIndex(sql, 0);
-            }
-            newSql.append(sql);
-            sql = newSql.toString();
-        }
-        Parser parser = new Parser();
-        List<String> sqlTokens = parser.toPrefix(sql);
-        List<Object> tokens = new ArrayList<Object>(sqlTokens);
-        if (tokens.size() == 0) throw new RuntimeException("Invalid SQL: [" + sql + "]");
-        if (tokens.size() == 1) {
-            return eval(tokens.get(0));
-        }
-        root:
-        while (tokens.size() > 1) {
-            boolean foundOperand = false;
-            for (int i = 0; i < tokens.size(); i++) {
-                Object tokenObj = tokens.get(i);
-                if (tokenObj instanceof String && parser.isOperand((String) tokenObj)) {
-                    String token = (String) tokenObj;
-                    if ("=".equals(token) || "==".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, equal((String) first, (Comparable) second));
-                    } else if ("!=".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, notEqual((String) first, (Comparable) second));
-                    } else if (">".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, greaterThan((String) first, (Comparable) second));
-                    } else if (">=".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, greaterEqual((String) first, (Comparable) second));
-                    } else if ("<=".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, lessEqual((String) first, (Comparable) second));
-                    } else if ("<".equals(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, lessThan((String) first, (Comparable) second));
-                    } else if ("LIKE".equalsIgnoreCase(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, like((String) first, (String) second));
-                    } else if ("ILIKE".equalsIgnoreCase(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, ilike((String) first, (String) second));
-                    } else if ("REGEX".equalsIgnoreCase(token)) {
-                        int position = (i - 2);
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, regex((String) first, (String) second));
-                    } else if ("IN".equalsIgnoreCase(token)) {
-                        int position = i - 2;
-                        validateOperandPosition(position);
-                        Object exp = toValue(tokens.remove(position), mapPhrases);
-                        String[] values = toValue(((String) tokens.remove(position)).split(","), mapPhrases);
-                        setOrAdd(tokens, position, Predicates.in((String) exp, values));
-                    } else if ("NOT".equalsIgnoreCase(token)) {
-                        int position = i - 1;
-                        validateOperandPosition(position);
-                        Object exp = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, Predicates.not(eval(exp)));
-                    } else if ("BETWEEN".equalsIgnoreCase(token)) {
-                        int position = i - 3;
-                        validateOperandPosition(position);
-                        Object expression = tokens.remove(position);
-                        Object from = toValue(tokens.remove(position), mapPhrases);
-                        Object to = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, between((String) expression, (Comparable) from, (Comparable) to));
-                    } else if ("AND".equalsIgnoreCase(token)) {
-                        int position = i - 2;
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, and(eval(first), eval(second)));
-                    } else if ("OR".equalsIgnoreCase(token)) {
-                        int position = i - 2;
-                        validateOperandPosition(position);
-                        Object first = toValue(tokens.remove(position), mapPhrases);
-                        Object second = toValue(tokens.remove(position), mapPhrases);
-                        setOrAdd(tokens, position, or(eval(first), eval(second)));
-                    } else throw new RuntimeException("Unknown token " + token);
-                    continue root;
-                }
-            }
-            if (!foundOperand) {
-                throw new RuntimeException("Invalid SQL: [" + sql + "]");
-            }
-        }
-        return (Predicate) tokens.get(0);
     }
 
     private void validateOperandPosition(int pos) {
