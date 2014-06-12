@@ -485,8 +485,8 @@ public class ManagementCenterService implements LifecycleListener, MembershipLis
                         HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                         connection.setDoOutput(true);
                         connection.setRequestMethod("POST");
-                        connection.setConnectTimeout(1000);
-                        connection.setReadTimeout(1000);
+                        connection.setConnectTimeout(5000);
+                        connection.setReadTimeout(5000);
                         final OutputStream outputStream = connection.getOutputStream();
                         try{
                             identifier.write(outputStream);
@@ -545,8 +545,8 @@ public class ManagementCenterService implements LifecycleListener, MembershipLis
                 HttpURLConnection connection = (HttpURLConnection) url.openConnection();
                 connection.setDoOutput(true);
                 connection.setRequestMethod("POST");
-                connection.setConnectTimeout(2000);
-                connection.setReadTimeout(2000);
+                connection.setConnectTimeout(5000);
+                connection.setReadTimeout(5000);
                 final OutputStream outputStream = connection.getOutputStream();
                 identifier.write(outputStream);
                 final ObjectDataOutputStream out = serializationService.createObjectDataOutputStream(outputStream);
