@@ -56,7 +56,7 @@ public class ConfigXmlGenerator {
                 .append("http://www.hazelcast.com/schema/config/hazelcast-config-2.5.xsd\">");
         xml.append("<group>");
         xml.append("<name>").append(config.getGroupConfig().getName()).append("</name>");
-        xml.append("<password>").append(config.getGroupConfig().getPassword()).append("</password>");
+        xml.append("<password>****</password>");
         xml.append("</group>");
         if (config.getLicenseKey() != null) {
             xml.append("<license-key>").append(config.getLicenseKey()).append("</license-key>");
