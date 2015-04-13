@@ -18,6 +18,8 @@ package com.hazelcast.client.impl.protocol.util;
 
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.nio.Address;
+import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.nio.serialization.DefaultData;
 
 import java.net.UnknownHostException;
 
@@ -69,4 +71,7 @@ public class ParameterUtil {
 
     }
 
+    public static int calculateDataSize(Data key) {
+        return calculateByteArrayDataSize(key.toByteArray());
+    }
 }

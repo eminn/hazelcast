@@ -96,6 +96,12 @@ public class ParameterFlyweight
         return this;
     }
 
+    public ParameterFlyweight set(Data data) {
+        final byte[] bytes = data.toByteArray();
+        set(bytes);
+        return this;
+    }
+
     public ParameterFlyweight set(final byte[] value) {
         final int length = value != null ? value.length : 0;
         set(length);

@@ -14,16 +14,20 @@
  * limitations under the License.
  */
 
-package com.hazelcast.client.impl.protocol.task;
+package com.hazelcast.client.impl.protocol.map;
 
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.instance.Node;
 import com.hazelcast.nio.Connection;
 
-public abstract class AbstractKeyBasedMessageTask<P> extends AbstractPartitionMessageTask<P> {
+public class PutAsyncMessageTask extends PutMessageTask {
 
-    protected AbstractKeyBasedMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
+    public PutAsyncMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
     }
 
+    @Override
+    public String getMethodName() {
+        return "putAsync";
+    }
 }

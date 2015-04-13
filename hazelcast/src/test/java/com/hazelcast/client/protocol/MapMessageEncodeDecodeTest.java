@@ -2,6 +2,7 @@ package com.hazelcast.client.protocol;
 
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.ClientMessageType;
+import com.hazelcast.client.impl.protocol.parameters.MapMessageType;
 import com.hazelcast.client.impl.protocol.parameters.MapPutParameters;
 import com.hazelcast.client.impl.protocol.util.BitUtil;
 import com.hazelcast.nio.serialization.Data;
@@ -52,7 +53,7 @@ public class MapMessageEncodeDecodeTest {
 
         assertEquals(calculatedSize, cmEncode.getFrameLength());
 
-        assertEquals(ClientMessageType.MAP_PUT_REQUEST.id(), cmDecode.getMessageType());
+        assertEquals(MapMessageType.MAP_PUT.id(), cmDecode.getMessageType());
         assertEquals(3, cmDecode.getVersion());
         assertEquals(ClientMessage.BEGIN_AND_END_FLAGS, cmDecode.getFlags());
         assertEquals(66, cmDecode.getCorrelationId());

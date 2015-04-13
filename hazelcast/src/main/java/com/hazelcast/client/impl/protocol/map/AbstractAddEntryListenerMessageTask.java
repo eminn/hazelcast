@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-package com.hazelcast.client.impl.protocol.task;
+package com.hazelcast.client.impl.protocol.map;
 
 import com.hazelcast.client.ClientEndpoint;
 import com.hazelcast.client.impl.protocol.ClientMessage;
 import com.hazelcast.client.impl.protocol.parameters.AddEntryListenerEventParameters;
-import com.hazelcast.client.impl.protocol.parameters.AddEntryListenerParameters;
 import com.hazelcast.client.impl.protocol.parameters.AddListenerResultParameters;
+import com.hazelcast.client.impl.protocol.task.AbstractCallableMessageTask;
+import com.hazelcast.client.impl.protocol.util.ParameterUtil;
 import com.hazelcast.core.EntryAdapter;
 import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryEventType;
@@ -32,7 +33,7 @@ import com.hazelcast.map.impl.MapService;
 import com.hazelcast.map.impl.MapServiceContext;
 import com.hazelcast.map.impl.QueryEventFilter;
 import com.hazelcast.nio.Connection;
-import com.hazelcast.nio.serialization.DefaultData;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.security.permission.ActionConstants;
 import com.hazelcast.security.permission.MapPermission;
@@ -40,15 +41,17 @@ import com.hazelcast.spi.EventFilter;
 
 import java.security.Permission;
 
-public class MapAddEntryListenerTask extends AbstractCallableMessageTask<AddEntryListenerParameters> {
+public abstract class AbstractAddEntryListenerMessageTask<Parameter> extends AbstractCallableMessageTask<Parameter> {
 
-    public MapAddEntryListenerTask(ClientMessage clientMessage, Node node, Connection connection) {
+    public AbstractAddEntryListenerMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
     }
 
-    protected Predicate getPredicate() {
-        return null;
-    }
+    protected abstract Predicate getPredicate();
+
+    protected abstract Data getKey();
+
+    protected abstract boolean getIncludeValue();
 
     @Override
     protected ClientMessage call() {
@@ -57,23 +60,19 @@ public class MapAddEntryListenerTask extends AbstractCallableMessageTask<AddEntr
 
         EntryAdapter<Object, Object> listener = new MapListener();
         MapServiceContext mapServiceContext = mapService.getMapServiceContext();
-        final String registrationId = mapServiceContext.addEventListener(listener, getEventFilter(), parameters.name);
-        endpoint.setListenerRegistration(MapService.SERVICE_NAME, parameters.name, registrationId);
+        final String name = getDistributedObjectName();
+        final String registrationId = mapServiceContext.addEventListener(listener, getEventFilter(), name);
+        endpoint.setListenerRegistration(MapService.SERVICE_NAME, name, registrationId);
         return AddListenerResultParameters.encode(registrationId);
     }
 
-    @Override
-    protected AddEntryListenerParameters decodeClientMessage(ClientMessage clientMessage) {
-        return AddEntryListenerParameters.decode(clientMessage);
-    }
 
     protected EventFilter getEventFilter() {
-        if (getPredicate() == null) {
-            return new EntryEventFilter(parameters.includeValue, parameters.key.length == 0 ? null
-                    : new DefaultData(parameters.key));
+        final Predicate predicate = getPredicate();
+        if (predicate == null) {
+            return new EntryEventFilter(getIncludeValue(), getKey());
         }
-        return new QueryEventFilter(parameters.includeValue, parameters.key.length == 0 ? null
-                : new DefaultData(parameters.key), getPredicate());
+        return new QueryEventFilter(getIncludeValue(), getKey(), predicate);
     }
 
     @Override
@@ -83,12 +82,7 @@ public class MapAddEntryListenerTask extends AbstractCallableMessageTask<AddEntr
 
     @Override
     public Permission getRequiredPermission() {
-        return new MapPermission(parameters.name, ActionConstants.ACTION_LISTEN);
-    }
-
-    @Override
-    public String getDistributedObjectName() {
-        return parameters.name;
+        return new MapPermission(getDistributedObjectName(), ActionConstants.ACTION_LISTEN);
     }
 
     private class MapListener extends EntryAdapter<Object, Object> {
@@ -101,13 +95,8 @@ public class MapAddEntryListenerTask extends AbstractCallableMessageTask<AddEntr
                             + event.getClass().getSimpleName());
                 }
                 DataAwareEntryEvent dataAwareEntryEvent = (DataAwareEntryEvent) event;
-                byte[] key = dataAwareEntryEvent.getKeyData() == null ? null
-                        : dataAwareEntryEvent.getKeyData().toByteArray();
-                byte[] value = dataAwareEntryEvent.getNewValueData() == null ? null
-                        : dataAwareEntryEvent.getNewValueData().toByteArray();
-                byte[] oldValue = dataAwareEntryEvent.getOldValueData() == null ? null
-                        : dataAwareEntryEvent.getOldValueData().toByteArray();
-                ClientMessage entryEvent = AddEntryListenerEventParameters.encode(key, value, oldValue,
+                ClientMessage entryEvent = AddEntryListenerEventParameters.encode(dataAwareEntryEvent.getKeyData()
+                        , dataAwareEntryEvent.getNewValueData(), dataAwareEntryEvent.getOldValueData(),
                         event.getEventType().getType(), event.getMember().getUuid(), 1);
                 sendClientMessage(entryEvent);
             }

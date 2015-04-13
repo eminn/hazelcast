@@ -68,7 +68,9 @@ public class ParameterClassModel {
         }
 
         public String getSizeString() {
-            if (type.equals("java.lang.String")) {
+            if (type.equals("com.hazelcast.nio.serialization.Data")) {
+                return "ParameterUtil.calculateDataSize(" + name + ")";
+            } else if (type.equals("java.lang.String")) {
                 return "ParameterUtil.calculateStringDataSize(" + name + ")";
             } else if (type.equals("byte[]")) {
                 return "ParameterUtil.calculateByteArrayDataSize(" + name + ")";
@@ -77,7 +79,9 @@ public class ParameterClassModel {
         }
 
         public String getDataGetterString() {
-            if (type.equals("java.lang.String")) {
+            if (type.equals("com.hazelcast.nio.serialization.Data")) {
+                return "getData";
+            } else if (type.equals("java.lang.String")) {
                 return "getStringUtf8";
             } else if (type.equals("byte[]")) {
                 return "getByteArray";

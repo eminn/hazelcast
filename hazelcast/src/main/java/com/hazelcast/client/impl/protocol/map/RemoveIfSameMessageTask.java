@@ -14,44 +14,37 @@
  * limitations under the License.
  */
 
-package com.hazelcast.client.impl.protocol.task;
+package com.hazelcast.client.impl.protocol.map;
 
-import com.hazelcast.client.impl.protocol.parameters.MapPutParameters;
 import com.hazelcast.client.impl.protocol.ClientMessage;
+import com.hazelcast.client.impl.protocol.parameters.MapRemoveIfSameParameters;
+import com.hazelcast.client.impl.protocol.task.AbstractKeyBasedMessageTask;
 import com.hazelcast.instance.Node;
 import com.hazelcast.map.impl.MapService;
-import com.hazelcast.map.impl.operation.PutOperation;
+import com.hazelcast.map.impl.operation.RemoveIfSameOperation;
 import com.hazelcast.nio.Connection;
-import com.hazelcast.nio.serialization.DefaultData;
 import com.hazelcast.security.permission.ActionConstants;
 import com.hazelcast.security.permission.MapPermission;
 import com.hazelcast.spi.Operation;
 
 import java.security.Permission;
-import java.util.concurrent.TimeUnit;
 
-public class MapPutMessageTask extends AbstractKeyBasedMessageTask<MapPutParameters> {
+public class RemoveIfSameMessageTask extends AbstractKeyBasedMessageTask<MapRemoveIfSameParameters> {
 
-    public MapPutMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
+    public RemoveIfSameMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
     }
 
     @Override
     protected Operation prepareOperation() {
-        PutOperation op = new PutOperation(parameters.name, new DefaultData(parameters.key), new DefaultData(parameters.value),
-                parameters.ttl);
+        RemoveIfSameOperation op = new RemoveIfSameOperation(parameters.name, parameters.key, parameters.value);
         op.setThreadId(parameters.threadId);
         return op;
     }
 
     @Override
-    protected MapPutParameters decodeClientMessage(ClientMessage clientMessage) {
-        return MapPutParameters.decode(clientMessage);
-    }
-
-    @Override
-    protected Object getKey() {
-        return new DefaultData(parameters.key);
+    protected MapRemoveIfSameParameters decodeClientMessage(ClientMessage clientMessage) {
+        return MapRemoveIfSameParameters.decode(clientMessage);
     }
 
     @Override
@@ -61,7 +54,7 @@ public class MapPutMessageTask extends AbstractKeyBasedMessageTask<MapPutParamet
 
     @Override
     public Permission getRequiredPermission() {
-        return new MapPermission(parameters.name, ActionConstants.ACTION_PUT);
+        return new MapPermission(parameters.name, ActionConstants.ACTION_REMOVE);
     }
 
     @Override
@@ -71,16 +64,12 @@ public class MapPutMessageTask extends AbstractKeyBasedMessageTask<MapPutParamet
 
     @Override
     public String getMethodName() {
-        return "put";
+        return "remove";
     }
 
     @Override
     public Object[] getParameters() {
-        if (parameters.ttl == -1) {
-            return new Object[]{parameters.key, parameters.value};
-        }
-        //TODO what should be the types of the key and value passed to securityContext
-        return new Object[]{parameters.key, parameters.value, parameters.ttl, TimeUnit.MILLISECONDS};
+        return new Object[]{parameters.key, parameters.value};
     }
 
 
