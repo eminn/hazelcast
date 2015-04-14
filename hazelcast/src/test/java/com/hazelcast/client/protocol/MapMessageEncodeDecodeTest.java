@@ -42,7 +42,7 @@ public class MapMessageEncodeDecodeTest {
         final int calculatedSize =
                 (BitUtil.SIZE_OF_INT + NAME.length()) + (BitUtil.SIZE_OF_INT + BYTES_DATA.length) * 2 + 8 * 2 + 1
                         + ClientMessage.HEADER_SIZE;
-        ClientMessage cmEncode = MapPutParameters.encode(NAME, BYTES_DATA, BYTES_DATA, THE_LONG, THE_LONG);
+        ClientMessage cmEncode = MapPutParameters.encode(NAME, DATA, DATA, THE_LONG, THE_LONG);
         cmEncode.setVersion((short) 3).setFlags(ClientMessage.BEGIN_AND_END_FLAGS).setCorrelationId(66).setPartitionId(77);
 
         byteBuffer = cmEncode.buffer().byteBuffer();
@@ -60,8 +60,8 @@ public class MapMessageEncodeDecodeTest {
         assertEquals(77, cmDecode.getPartitionId());
 
         assertEquals(NAME, decodeParams.name);
-        assertArrayEquals(BYTES_DATA, decodeParams.key);
-        assertArrayEquals(BYTES_DATA, decodeParams.value);
+        assertArrayEquals(BYTES_DATA, decodeParams.key.toByteArray());
+        assertArrayEquals(BYTES_DATA, decodeParams.value.toByteArray());
         assertEquals(THE_LONG, decodeParams.threadId);
         assertEquals(THE_LONG, decodeParams.ttl);
     }

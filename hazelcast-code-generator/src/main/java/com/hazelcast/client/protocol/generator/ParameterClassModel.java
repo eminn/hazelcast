@@ -74,6 +74,12 @@ public class ParameterClassModel {
                 return "ParameterUtil.calculateStringDataSize(" + name + ")";
             } else if (type.equals("byte[]")) {
                 return "ParameterUtil.calculateByteArrayDataSize(" + name + ")";
+            } else if (type.equals("com.hazelcast.nio.serialization.Data")) {
+                return "ParameterUtil.calculateDataSize(" + name + ")";
+            } else if (type.equals("java.util.List<com.hazelcast.nio.serialization.Data>")
+                    || type.equals("java.util.Set<com.hazelcast.nio.serialization.Data>")
+                    || type.equals("java.util.Collection<com.hazelcast.nio.serialization.Data>")) {
+                return "ParameterUtil.calculateCollectionDataSize(" + name + ")";
             }
             return "BitUtil.SIZE_OF_" + type.toUpperCase();
         }
@@ -85,6 +91,14 @@ public class ParameterClassModel {
                 return "getStringUtf8";
             } else if (type.equals("byte[]")) {
                 return "getByteArray";
+            } else if (type.equals("com.hazelcast.nio.serialization.Data")) {
+                return "getData";
+            } else if (type.equals("java.util.List<com.hazelcast.nio.serialization.Data>")) {
+                return "getDataList";
+            } else if (type.equals("java.util.Set<com.hazelcast.nio.serialization.Data>")) {
+                return "getDataSet";
+            } else if (type.equals("java.util.Collection<com.hazelcast.nio.serialization.Data>")) {
+                return "getDataSet";
             }
             return "get" + CodeGenerationUtils.capitalizeFirstLetter(type);
         }

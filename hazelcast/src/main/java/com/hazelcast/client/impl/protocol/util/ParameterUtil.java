@@ -22,6 +22,7 @@ import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.DefaultData;
 
 import java.net.UnknownHostException;
+import java.util.Collection;
 
 public class ParameterUtil {
 
@@ -39,6 +40,17 @@ public class ParameterUtil {
         return BitUtil.SIZE_OF_INT + bytes.length;
     }
 
+    public static int calculateDataSize(Data data) {
+        return calculateByteArrayDataSize(data.toByteArray());
+    }
+
+    public static int calculateCollectionDataSize(Collection<Data> dataCollection) {
+        int total = 0;
+        for(Data data:dataCollection) {
+            total += calculateDataSize(data);
+        }
+        return total;
+    }
 
     public static int calculateAddressDataSize(Address address) {
         boolean isNull = address == null;
@@ -71,7 +83,4 @@ public class ParameterUtil {
 
     }
 
-    public static int calculateDataSize(Data key) {
-        return calculateByteArrayDataSize(key.toByteArray());
-    }
 }
