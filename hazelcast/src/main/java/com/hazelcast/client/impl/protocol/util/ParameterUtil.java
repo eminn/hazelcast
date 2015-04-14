@@ -45,7 +45,7 @@ public class ParameterUtil {
     }
 
     public static int calculateCollectionDataSize(Collection<Data> dataCollection) {
-        int total = 0;
+        int total = BitUtil.SIZE_OF_INT;
         for(Data data:dataCollection) {
             total += calculateDataSize(data);
         }
