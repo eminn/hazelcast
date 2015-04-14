@@ -190,11 +190,9 @@ public abstract class AbstractMessageTask<P>
         sendClientMessage(exception);
     }
 
-    public String getServiceName() {
-        return null;
-    }
+    public abstract String getServiceName() ;
 
-    public String getDistributedObjectType() {
+    public final String getDistributedObjectType() {
         return getServiceName();
     }
 
@@ -204,12 +202,8 @@ public abstract class AbstractMessageTask<P>
     }
 
     @Override
-    public String getMethodName() {
-        return null;
-    }
+    public abstract String getMethodName();
 
     @Override
-    public Object[] getParameters() {
-        return null;
-    }
+    public abstract Object[] getParameters();
 }
