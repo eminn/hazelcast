@@ -60,7 +60,9 @@ public enum ClientMessageType {
 
     GET_PARTITIONS_RESULT(13),
 
-    AUTHENTICATION_RESULT(14);
+    AUTHENTICATION_RESULT(14),
+
+    BOOLEAN_RESULT(15);
 
     private final int id;
 
