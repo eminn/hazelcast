@@ -25,7 +25,6 @@ import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.monitor.impl.LocalReplicatedMapStatsImpl;
 import com.hazelcast.nio.Address;
-import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.replicatedmap.impl.PreReplicationHook;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
 import com.hazelcast.replicatedmap.impl.ReplicationChannel;
@@ -42,7 +41,6 @@ import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.util.Clock;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -50,6 +48,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
@@ -92,6 +92,7 @@ public class ReplicationPublisher<K, V>
 
     private final boolean allowReplicationHooks;
     private volatile PreReplicationHook preReplicationHook;
+    public ConcurrentHashMap<Object, ConcurrentLinkedQueue> history = new ConcurrentHashMap<Object, ConcurrentLinkedQueue>();
 
     ReplicationPublisher(AbstractBaseReplicatedRecordStore<K, V> replicatedRecordStore, NodeEngine nodeEngine) {
         this.replicatedRecordStore = replicatedRecordStore;
@@ -127,6 +128,7 @@ public class ReplicationPublisher<K, V>
 
     public void publishReplicatedMessage(ReplicationMessage message) {
         if (replicatedMapConfig.getReplicationDelayMillis() == 0) {
+//            System.out.println( nodeEngine.getThisAddress()  + " sent -->> message = " + message);
             distributeReplicationMessage(message, false);
         } else {
             replicationMessageCacheLock.lock();
@@ -323,9 +325,56 @@ public class ReplicationPublisher<K, V>
         }
     }
 
+    private class RecordSnapshot{
+        Object key;
+        Object localValue;
+        Object remoteValue;
+        int localLatestUpdateHash;
+        int remoteLatestUpdateHash;
+        boolean win;
+        boolean conflict;
+        boolean ignore;
+        int winningHash;
+        Object resultValue;
+        VectorClockTimestamp localClock;
+        VectorClockTimestamp remoteClock;
+
+        @Override
+        public String toString() {
+            return "RecordSnapshot{" +
+                    "key=" + key +
+                    ", localValue=" + localValue +
+                    ", remoteValue=" + remoteValue +
+                    ", localLatestUpdateHash=" + localLatestUpdateHash +
+                    ", remoteLatestUpdateHash=" + remoteLatestUpdateHash +
+                    ", win=" + win +
+                    ", conflict=" + conflict +
+                    ", ignore=" + ignore +
+                    ", winningHash=" + winningHash +
+                    ", resultValue=" + resultValue +
+                    ", localClock=" + localClock +
+                    ", remoteClock=" + remoteClock +
+                    '}';
+        }
+    }
+
     private void updateLocalEntry(ReplicatedRecord<K, V> localEntry, ReplicationMessage update) {
+        ConcurrentLinkedQueue queue = history.get(localEntry.getKey());
+        if (queue == null) {
+            queue = new ConcurrentLinkedQueue();
+        }
+        RecordSnapshot recordSnapshot = new RecordSnapshot();
+        recordSnapshot.localClock = localEntry.getVectorClockTimestamp();
+        recordSnapshot.remoteClock = update.getVectorClockTimestamp();
+        recordSnapshot.key = localEntry.getKey();
+        recordSnapshot.localValue = localEntry.getValue();
+        recordSnapshot.remoteValue = update.getValue();
+        recordSnapshot.localLatestUpdateHash = localEntry.getLatestUpdateHash();
+        recordSnapshot.remoteLatestUpdateHash = update.getUpdateHash();
         final VectorClockTimestamp currentVectorClockTimestamp = localEntry.getVectorClockTimestamp();
         final VectorClockTimestamp updateVectorClockTimestamp = update.getVectorClockTimestamp();
+//        System.out.println(nodeEngine.getThisAddress() + "currentVectorClockTimestamp = " + currentVectorClockTimestamp);
+//        System.out.println(nodeEngine.getThisAddress() + "updateVectorClockTimestamp = " + updateVectorClockTimestamp);
         if (isOldTombstone(localEntry)) {
             // the tombstone has been created quite some ago. we are going to accept the update regardless of its clock
             // chances are the tombstone on a source node already expired and its clocked were reset
@@ -333,26 +382,49 @@ public class ReplicationPublisher<K, V>
         } else if (VectorClockTimestamp.happenedBefore(currentVectorClockTimestamp, updateVectorClockTimestamp)) {
             // A new update happened
             applyTheUpdate(update, localEntry);
+            recordSnapshot.conflict = false;
+            recordSnapshot.win = false;
+            recordSnapshot.ignore = false;
+            recordSnapshot.resultValue = update.getValue();
         } else if (VectorClockTimestamp.happenedBefore(updateVectorClockTimestamp, currentVectorClockTimestamp)) {
             // ignore the update. This is an old update
+            recordSnapshot.ignore = true;
+
             return;
         } else if (!updateVectorClockTimestamp.equals(currentVectorClockTimestamp)) {
+            recordSnapshot.conflict = true;
+            recordSnapshot.ignore = false;
             if (localEntry.getLatestUpdateHash() >= update.getUpdateHash()) {
+                recordSnapshot.win = false;
+                recordSnapshot.winningHash = update.getUpdateHash();
+                recordSnapshot.resultValue = update.getValue();
+//                System.out.println(nodeEngine.getThisAddress() + ", k = " + localEntry.getKey() + " --> local has higher hash");
                 applyTheUpdate(update, localEntry);
             } else {
-                VectorClockTimestamp newTimestamp = localEntry
-                        .applyAndIncrementVectorClock(updateVectorClockTimestamp, localMember);
+                recordSnapshot.win = true;
+                recordSnapshot.winningHash = localEntry.getLatestUpdateHash();
+                recordSnapshot.resultValue = localEntry.getValue();
 
-                Object key = update.getKey();
-                V v = localEntry.getValueInternal();
-                V value = v instanceof Data ? (V) nodeEngine.toObject(v) : v;
-                long ttlMillis = update.getTtlMillis();
-                int latestUpdateHash = localEntry.getLatestUpdateHash();
-                ReplicationMessage message = new ReplicationMessage(name, key, value, newTimestamp, localMember,
-                        latestUpdateHash, ttlMillis);
-
-                distributeReplicationMessage(message, true);
+//                System.out.println(nodeEngine.getThisAddress() + ", k = " + localEntry.getKey() + " --> local has lower hash");
+//
+                localEntry.applyVectorClock(updateVectorClockTimestamp);
+//                System.out.println("conflict resolved, re-replicating solution");
+//                VectorClockTimestamp newTimestamp = localEntry
+//                        .applyAndIncrementVectorClock(updateVectorClockTimestamp, localMember);
+//
+//                Object key = update.getKey();
+//                V v = localEntry.getValueInternal();
+//                V value = v instanceof Data ? (V) nodeEngine.toObject(v) : v;
+//                long ttlMillis = update.getTtlMillis();
+//                int latestUpdateHash = localEntry.getLatestUpdateHash();
+//                ReplicationMessage message = new ReplicationMessage(name, key, value, newTimestamp, localMember,
+//                        latestUpdateHash, ttlMillis);
+//
+//                distributeReplicationMessage(message, true);
             }
+            queue.offer(recordSnapshot);
+            history.put(localEntry.getKey(), queue);
+
         } else {
             LOGGER.finest("Received an update with the same state of vector clock I currently have. "
                     + "This can happened during initialization. Ignoring the update.");

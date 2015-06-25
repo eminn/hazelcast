@@ -67,7 +67,25 @@ public class VectorClockTest extends HazelcastTestSupport {
         MemberImpl member1 = new MemberImpl(new Address("127.0.0.1", 0));
         MemberImpl member2 = new MemberImpl(new Address("127.0.0.2", 0));
         MemberImpl member3 = new MemberImpl(new Address("127.0.0.3", 0));
+        clock1 = clock1.incrementClock(member1);
         clock1 = clock1.incrementClock(member2);
+        clock1 = clock1.incrementClock(member3);
+
+        clock2 = clock2.incrementClock(member2);
+        clock2 = clock2.incrementClock(member3);
+
+        // we need to represent happens before with an enum not with boolean
+        assertHappensBefore(clock1, clock2);
+    }
+
+    @Test
+    public void testHappensBefore_2() throws Exception {
+        VectorClockTimestamp clock1 = new VectorClockTimestamp();
+        VectorClockTimestamp clock2 = new VectorClockTimestamp();
+        MemberImpl member1 = new MemberImpl(new Address("127.0.0.1", 0));
+        MemberImpl member2 = new MemberImpl(new Address("127.0.0.2", 0));
+        MemberImpl member3 = new MemberImpl(new Address("127.0.0.3", 0));
+        clock1 = clock1.incrementClock(member1);
         clock1 = clock1.incrementClock(member2);
 
         clock2 = clock2.incrementClock(member1);

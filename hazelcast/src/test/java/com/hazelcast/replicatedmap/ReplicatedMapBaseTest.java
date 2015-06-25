@@ -76,6 +76,11 @@ public abstract class ReplicatedMapBaseTest extends HazelcastTestSupport {
         ReplicatedMapProxy<K, V> proxy = (ReplicatedMapProxy<K, V>) map;
         return ((AbstractReplicatedRecordStore<K, V>) REPLICATED_RECORD_STORE.get(proxy)).getReplicationPublisher();
     }
+    @SuppressWarnings("unchecked")
+    protected <K, V> AbstractReplicatedRecordStore<K, V> getReplicatedRecordStore(ReplicatedMap<K, V> map) throws Exception {
+        ReplicatedMapProxy<K, V> proxy = (ReplicatedMapProxy<K, V>) map;
+        return ((AbstractReplicatedRecordStore<K, V>) REPLICATED_RECORD_STORE.get(proxy));
+    }
 
     @SuppressWarnings("unchecked")
     protected AbstractMap.SimpleEntry<Integer, Integer>[] buildTestValues() {
