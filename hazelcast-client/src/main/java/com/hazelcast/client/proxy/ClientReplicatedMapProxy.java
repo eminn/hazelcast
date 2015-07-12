@@ -16,8 +16,8 @@
 
 package com.hazelcast.client.proxy;
 
-import com.hazelcast.client.nearcache.ClientHeapNearCache;
 import com.hazelcast.client.impl.client.ClientRequest;
+import com.hazelcast.client.nearcache.ClientHeapNearCache;
 import com.hazelcast.client.nearcache.ClientNearCache;
 import com.hazelcast.client.spi.ClientProxy;
 import com.hazelcast.client.spi.EventHandler;
@@ -26,6 +26,7 @@ import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.ReplicatedMap;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.replicatedmap.impl.client.ClientReplicatedMapAddEntryListenerRequest;
 import com.hazelcast.replicatedmap.impl.client.ClientReplicatedMapClearRequest;
@@ -42,14 +43,15 @@ import com.hazelcast.replicatedmap.impl.client.ClientReplicatedMapRemoveRequest;
 import com.hazelcast.replicatedmap.impl.client.ClientReplicatedMapSizeRequest;
 import com.hazelcast.replicatedmap.impl.client.ClientReplicatedMapValuesRequest;
 import com.hazelcast.replicatedmap.impl.client.ReplicatedMapEntrySet;
-import com.hazelcast.replicatedmap.impl.client.ReplicatedMapGetResponse;
 import com.hazelcast.replicatedmap.impl.client.ReplicatedMapKeySet;
 import com.hazelcast.replicatedmap.impl.client.ReplicatedMapPortableEntryEvent;
 import com.hazelcast.replicatedmap.impl.client.ReplicatedMapValueCollection;
-
+import java.util.AbstractMap;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -62,9 +64,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @param <K> key type
  * @param <V> value type
  */
-public class ClientReplicatedMapProxy<K, V>
-        extends ClientProxy
-        implements ReplicatedMap<K, V> {
+public class ClientReplicatedMapProxy<K, V> extends ClientProxy implements ReplicatedMap<K, V> {
 
     private volatile ClientHeapNearCache<Object> nearCache;
     private final AtomicBoolean nearCacheInitialized = new AtomicBoolean();
@@ -82,7 +82,9 @@ public class ClientReplicatedMapProxy<K, V>
 
     @Override
     public V put(K key, V value, long ttl, TimeUnit timeUnit) {
-        return invoke(new ClientReplicatedMapPutTtlRequest(getName(), key, value, timeUnit.toMillis(ttl)));
+        Data dataKey = toData(key);
+        Data dataValue = toData(value);
+        return invoke(new ClientReplicatedMapPutTtlRequest(getName(), dataKey, dataValue, timeUnit.toMillis(ttl)));
     }
 
     @Override
@@ -97,19 +99,22 @@ public class ClientReplicatedMapProxy<K, V>
 
     @Override
     public boolean containsKey(Object key) {
-        return (Boolean) invoke(new ClientReplicatedMapContainsKeyRequest(getName(), key));
+        Data dataKey = toData(key);
+        return (Boolean) invoke(new ClientReplicatedMapContainsKeyRequest(getName(), dataKey));
     }
 
     @Override
     public boolean containsValue(Object value) {
-        return (Boolean) invoke(new ClientReplicatedMapContainsValueRequest(getName(), value));
+        Data dataValue = toData(value);
+        return (Boolean) invoke(new ClientReplicatedMapContainsValueRequest(getName(), dataValue));
     }
 
     @Override
     public V get(Object key) {
+        Data dataKey = toData(key);
         initNearCache();
         if (nearCache != null) {
-            Object cached = nearCache.get(key);
+            Object cached = nearCache.get(dataKey);
             if (cached != null) {
                 if (cached.equals(ClientNearCache.NULL_OBJECT)) {
                     return null;
@@ -117,12 +122,11 @@ public class ClientReplicatedMapProxy<K, V>
                 return (V) cached;
             }
         }
+        Data response = invoke(new ClientReplicatedMapGetRequest(getName(), dataKey));
 
-        ReplicatedMapGetResponse response = invoke(new ClientReplicatedMapGetRequest(getName(), key));
-
-        V value = (V) response.getValue();
+        V value = toObject(response);
         if (nearCache != null) {
-            nearCache.put(key, value);
+            nearCache.put(dataKey, value);
         }
         return value;
     }
@@ -134,12 +138,20 @@ public class ClientReplicatedMapProxy<K, V>
 
     @Override
     public V remove(Object key) {
-        return invoke(new ClientReplicatedMapRemoveRequest(getName(), key));
+        Data dataKey = toData(key);
+        Object response = invoke(new ClientReplicatedMapRemoveRequest(getName(), dataKey));
+        return toObject(response);
     }
 
     @Override
     public void putAll(Map<? extends K, ? extends V> m) {
-        invoke(new ClientReplicatedMapPutAllRequest(getName(), new ReplicatedMapEntrySet(m.entrySet())));
+        HashSet<Entry<Data, Data>> dataSet = new HashSet<Entry<Data, Data>>(m.size());
+        for (Entry<? extends K, ? extends V> entry : m.entrySet()) {
+            Data dataKey = toData(entry.getKey());
+            Data dataValue = toData(entry.getValue());
+            dataSet.add(new AbstractMap.SimpleImmutableEntry<Data, Data>(dataKey, dataValue));
+        }
+        invoke(new ClientReplicatedMapPutAllRequest(getName(), new ReplicatedMapEntrySet(dataSet)));
     }
 
     @Override
@@ -150,49 +162,62 @@ public class ClientReplicatedMapProxy<K, V>
 
     @Override
     public boolean removeEntryListener(String id) {
-        final ClientReplicatedMapRemoveEntryListenerRequest request = new ClientReplicatedMapRemoveEntryListenerRequest(getName(),
-                id);
+        ClientReplicatedMapRemoveEntryListenerRequest request = new ClientReplicatedMapRemoveEntryListenerRequest(getName(), id);
         return stopListening(request, id);
     }
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener) {
-        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), null,
-                null);
+        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), null, null);
         EventHandler<ReplicatedMapPortableEntryEvent> handler = createHandler(listener);
         return listen(request, null, handler);
     }
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener, K key) {
-        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), null, key);
+        Data dataKey = toData(key);
+        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), null, dataKey);
         EventHandler<ReplicatedMapPortableEntryEvent> handler = createHandler(listener);
         return listen(request, null, handler);
     }
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener, Predicate<K, V> predicate) {
-        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), predicate,
-                null);
+        ClientReplicatedMapAddEntryListenerRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), predicate, null);
         EventHandler<ReplicatedMapPortableEntryEvent> handler = createHandler(listener);
         return listen(request, null, handler);
     }
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener, Predicate<K, V> predicate, K key) {
-        ClientRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), predicate, key);
+        Data dataKey = toData(key);
+        ClientRequest request = new ClientReplicatedMapAddEntryListenerRequest(getName(), predicate, dataKey);
         EventHandler<ReplicatedMapPortableEntryEvent> handler = createHandler(listener);
         return listen(request, null, handler);
     }
 
     @Override
     public Set<K> keySet() {
-        return ((ReplicatedMapKeySet) invoke(new ClientReplicatedMapKeySetRequest(getName()))).getKeySet();
+        ReplicatedMapKeySet result = invoke(new ClientReplicatedMapKeySetRequest(getName()));
+        Set<Data> keySetData = result.getKeySet();
+        Set<K> keySet = new HashSet<K>(keySetData.size());
+        for (Data data : keySetData) {
+            final K key = toObject(data);
+            keySet.add(key);
+        }
+        return keySet;
     }
 
     @Override
     public Collection<V> values() {
-        return ((ReplicatedMapValueCollection) invoke(new ClientReplicatedMapValuesRequest(getName()))).getValues();
+        ReplicatedMapValueCollection result = invoke(new ClientReplicatedMapValuesRequest(getName()));
+        Collection<Data> collectionData = result.getValues();
+        Collection<V> collection = new ArrayList<V>(collectionData.size());
+        for (Data data : collectionData) {
+            V value = toObject(data);
+            collection.add(value);
+        }
+        return collection;
     }
 
     @Override
@@ -204,7 +229,17 @@ public class ClientReplicatedMapProxy<K, V>
 
     @Override
     public Set<Entry<K, V>> entrySet() {
-        return ((ReplicatedMapEntrySet) invoke(new ClientReplicatedMapEntrySetRequest(getName()))).getEntrySet();
+        ReplicatedMapEntrySet result = invoke(new ClientReplicatedMapEntrySetRequest(getName()));
+        Set<Entry<Data, Data>> entrySetData = result.getEntrySet();
+        Set<Entry<K, V>> entrySet = new HashSet<Entry<K, V>>(entrySetData.size());
+        for (Entry<Data, Data> dataEntry : entrySetData) {
+            Data keyData = dataEntry.getKey();
+            Data valueData = dataEntry.getValue();
+            K key = toObject(keyData);
+            V value = toObject(valueData);
+            entrySet.add(new AbstractMap.SimpleEntry<K, V>(key, value));
+        }
+        return entrySet;
     }
 
     private EventHandler<ReplicatedMapPortableEntryEvent> createHandler(final EntryListener<K, V> listener) {
@@ -236,9 +271,9 @@ public class ClientReplicatedMapProxy<K, V>
         }
 
         public void handle(ReplicatedMapPortableEntryEvent event) {
-            V value = (V) event.getValue();
-            V oldValue = (V) event.getOldValue();
-            K key = (K) event.getKey();
+            V value = toObject(event.getValue());
+            V oldValue = toObject(event.getOldValue());
+            K key = toObject(event.getKey());
             Member member = getContext().getClusterService().getMember(event.getUuid());
             EntryEvent<K, V> entryEvent = new EntryEvent<K, V>(getName(), member, event.getEventType().getType(), key,
                     oldValue, value);

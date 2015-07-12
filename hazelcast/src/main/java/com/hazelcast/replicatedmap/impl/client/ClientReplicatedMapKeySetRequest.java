@@ -21,12 +21,12 @@ import com.hazelcast.security.permission.ActionConstants;
 import com.hazelcast.security.permission.ReplicatedMapPermission;
 
 import java.security.Permission;
+import java.util.Set;
 
 /**
  * Client request class for {@link java.util.Map#keySet()} implementation
  */
-public class ClientReplicatedMapKeySetRequest
-        extends AbstractReplicatedMapClientRequest {
+public class ClientReplicatedMapKeySetRequest extends AbstractReplicatedMapClientRequest {
 
     ClientReplicatedMapKeySetRequest() {
         super(null);
@@ -37,10 +37,10 @@ public class ClientReplicatedMapKeySetRequest
     }
 
     @Override
-    public Object call()
-            throws Exception {
+    public Object call() throws Exception {
         ReplicatedRecordStore recordStore = getReplicatedRecordStore();
-        return new ReplicatedMapKeySet(recordStore.keySet());
+        Set keySet = recordStore.keySet();
+        return new ReplicatedMapKeySet(keySet);
     }
 
     @Override

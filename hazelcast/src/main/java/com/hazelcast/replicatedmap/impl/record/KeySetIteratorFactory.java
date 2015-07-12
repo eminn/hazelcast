@@ -17,13 +17,11 @@
 package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.replicatedmap.impl.record.LazySet.IteratorFactory;
-
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-class KeySetIteratorFactory<K, V>
-        implements IteratorFactory<K, V, K> {
+class KeySetIteratorFactory<K, V> implements IteratorFactory<K, V, K> {
 
     private final ReplicatedRecordStore recordStore;
 
@@ -32,18 +30,18 @@ class KeySetIteratorFactory<K, V>
     }
 
     @Override
-    public Iterator<K> create(final Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator) {
+    public Iterator<K> create(final Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator) {
         return new KeySetIterator(iterator);
     }
 
     private final class KeySetIterator
             implements Iterator<K> {
 
-        private final Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator;
+        private final Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator;
 
-        private Map.Entry<K, ReplicatedRecord<K, V>> entry;
+        private Map.Entry<K, ReplicatedRecord<V>> entry;
 
-        private KeySetIterator(Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator) {
+        private KeySetIterator(Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator) {
             this.iterator = iterator;
         }
 
@@ -60,7 +58,7 @@ class KeySetIteratorFactory<K, V>
 
         @Override
         public K next() {
-            Map.Entry<K, ReplicatedRecord<K, V>> entry = this.entry;
+            Map.Entry<K, ReplicatedRecord<V>> entry = this.entry;
             Object key = entry != null ? entry.getKey() : null;
 
             while (entry == null) {
@@ -78,7 +76,7 @@ class KeySetIteratorFactory<K, V>
                 throw new NoSuchElementException();
             }
 
-            key = recordStore.unmarshallKey(key);
+            key = recordStore.unmarshall(key);
             return (K) key;
         }
 
@@ -87,12 +85,12 @@ class KeySetIteratorFactory<K, V>
             throw new UnsupportedOperationException("Lazy structures are not modifiable");
         }
 
-        private boolean testEntry(Map.Entry<K, ReplicatedRecord<K, V>> entry) {
+        private boolean testEntry(Map.Entry<K, ReplicatedRecord<V>> entry) {
             return entry.getKey() != null && entry.getValue() != null && !entry.getValue().isTombstone();
         }
 
-        private Map.Entry<K, ReplicatedRecord<K, V>> findNextEntry() {
-            Map.Entry<K, ReplicatedRecord<K, V>> entry = null;
+        private Map.Entry<K, ReplicatedRecord<V>> findNextEntry() {
+            Map.Entry<K, ReplicatedRecord<V>> entry = null;
             while (iterator.hasNext()) {
                 entry = iterator.next();
                 if (testEntry(entry)) {

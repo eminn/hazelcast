@@ -42,8 +42,7 @@ import static org.junit.Assert.assertTrue;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category(QuickTest.class)
-public class ReplicatedMapHitsAndLastAccessTimeTest
-        extends ReplicatedMapBaseTest {
+public class ReplicatedMapHitsAndLastAccessTimeTest extends ReplicatedMapBaseTest {
 
     @Test
     public void test_hitsAndLastAccessTimeSetToAnyValueAfterStartTime_objectDelay0()
@@ -103,7 +102,7 @@ public class ReplicatedMapHitsAndLastAccessTimeTest
         }
     }
 
-    private void assertRecord(ReplicatedRecord<Integer, Integer> record, long startTime) {
+    private void assertRecord(ReplicatedRecord<Integer> record, long startTime) {
         long hits = record.getHits();
         long lastAccessTime = record.getLastAccessTime();
         long now = Clock.currentTimeMillis();
@@ -156,7 +155,7 @@ public class ReplicatedMapHitsAndLastAccessTimeTest
         }, ADDED, operations, 1, map);
 
         for (int i = 0; i < operations; i++) {
-            final ReplicatedRecord<Integer, Integer> replicatedRecord = getReplicatedRecord(map, i);
+            final ReplicatedRecord<Integer> replicatedRecord = getReplicatedRecord(map, i);
             assertEquals(0, replicatedRecord.getHits());
             assertEquals(0, replicatedRecord.getLastAccessTime());
         }
@@ -207,7 +206,7 @@ public class ReplicatedMapHitsAndLastAccessTimeTest
         }
 
         for (int i = 0; i < operations; i++) {
-            final ReplicatedRecord<Integer, Integer> replicatedRecord = getReplicatedRecord(map, i);
+            final ReplicatedRecord<Integer> replicatedRecord = getReplicatedRecord(map, i);
             assertEquals(1, replicatedRecord.getHits());
             assertTrue("Last access time should be set for " + i, replicatedRecord.getLastAccessTime() > 0);
         }
@@ -258,13 +257,13 @@ public class ReplicatedMapHitsAndLastAccessTimeTest
         }, ADDED, operations, 1, map1, map2);
 
         for (int i = 0; i < operations; i++) {
-            final ReplicatedRecord<Integer, Integer> replicatedRecord = getReplicatedRecord(map1, i);
+            final ReplicatedRecord<Integer> replicatedRecord = getReplicatedRecord(map1, i);
             assertEquals(1, replicatedRecord.getHits());
             assertTrue("Last access time should be set for " + i, replicatedRecord.getLastAccessTime() > 0);
         }
 
         for (int i = 0; i < operations; i++) {
-            final ReplicatedRecord<Integer, Integer> replicatedRecord = getReplicatedRecord(map2, i);
+            final ReplicatedRecord<Integer> replicatedRecord = getReplicatedRecord(map2, i);
             assertEquals(0, replicatedRecord.getHits());
             assertEquals(0, replicatedRecord.getLastAccessTime());
         }
@@ -350,13 +349,11 @@ public class ReplicatedMapHitsAndLastAccessTimeTest
     }
 
     @Test
-    public void test_hitsAreIncrementedOnPuts_with2Nodes_binaryDelayDefault()
-            throws Exception {
+    public void test_hitsAreIncrementedOnPuts_with2Nodes_binaryDelayDefault() throws Exception {
         testHitsAreIncrementedOnPutsFor1Of2Nodes(buildConfig(InMemoryFormat.BINARY, DEFAULT_REPLICATION_DELAY_MILLIS));
     }
 
-    private void testHitsAreIncrementedOnPutsFor1Of2Nodes(final Config config)
-            throws Exception {
+    private void testHitsAreIncrementedOnPutsFor1Of2Nodes(final Config config) throws Exception {
         final TestHazelcastInstanceFactory nodeFactory = createHazelcastInstanceFactory(2);
         final HazelcastInstance instance1 = nodeFactory.newHazelcastInstance(config);
         final HazelcastInstance instance2 = nodeFactory.newHazelcastInstance(config);

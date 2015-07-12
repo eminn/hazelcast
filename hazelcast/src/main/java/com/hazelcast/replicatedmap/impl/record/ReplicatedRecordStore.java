@@ -17,8 +17,8 @@
 package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.core.EntryListener;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.Predicate;
-
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Set;
@@ -31,23 +31,23 @@ public interface ReplicatedRecordStore {
 
     String getName();
 
-    Object remove(Object key);
+    Object remove(Data key);
 
-    void evict(Object key);
+    void evict(Data key);
 
-    void removeTombstone(Object key);
+    void removeTombstone(Data key);
 
-    Object get(Object key);
+    Object get(Data key);
 
-    Object put(Object key, Object value);
+    Object put(Data key, Object value);
 
-    Object put(Object key, Object value, long ttl, TimeUnit timeUnit);
+    Object put(Data key, Object value, long ttl, TimeUnit timeUnit);
 
-    boolean containsKey(Object key);
+    boolean containsKey(Data key);
 
     boolean containsValue(Object value);
 
-    ReplicatedRecord getReplicatedRecord(Object key);
+    ReplicatedRecord getReplicatedRecord(Data key);
 
     Set keySet();
 
@@ -63,17 +63,13 @@ public interface ReplicatedRecordStore {
 
     boolean isEmpty();
 
-    Object unmarshallKey(Object key);
+    String addEntryListener(EntryListener listener, Data key);
 
-    Object unmarshallValue(Object value);
+    String addEntryListener(EntryListener listener, Predicate predicate, Data key);
 
-    Object marshallKey(Object key);
+    Data marshall(Object object);
 
-    Object marshallValue(Object value);
-
-    String addEntryListener(EntryListener listener, Object key);
-
-    String addEntryListener(EntryListener listener, Predicate predicate, Object key);
+    Object unmarshall(Object object);
 
     boolean removeEntryListenerInternal(String id);
 

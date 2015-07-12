@@ -18,15 +18,16 @@ package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.config.ListenerConfig;
 import com.hazelcast.config.ReplicatedMapConfig;
-import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryEventType;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.HazelcastInstanceAware;
 import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
+import com.hazelcast.map.impl.EntryEventData;
 import com.hazelcast.monitor.LocalReplicatedMapStats;
 import com.hazelcast.monitor.impl.LocalReplicatedMapStatsImpl;
 import com.hazelcast.nio.ClassLoaderUtil;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapEvictionProcessor;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
 import com.hazelcast.spi.EventFilter;
@@ -39,7 +40,6 @@ import com.hazelcast.util.scheduler.EntryTaskScheduler;
 import com.hazelcast.util.scheduler.EntryTaskSchedulerFactory;
 import com.hazelcast.util.scheduler.ScheduleType;
 import com.hazelcast.util.scheduler.ScheduledEntry;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
@@ -49,14 +49,13 @@ import java.util.Set;
 /**
  * Internal base class to encapsulate the internals from the interface methods of ReplicatedRecordStore
  *
- * @param <K> key type
  * @param <V> value type
  */
-abstract class AbstractBaseReplicatedRecordStore<K, V>
+abstract class AbstractBaseReplicatedRecordStore<V>
         implements ReplicatedRecordStore, InitializingObject {
 
     protected final LocalReplicatedMapStatsImpl mapStats = new LocalReplicatedMapStatsImpl();
-    protected final InternalReplicatedMapStorage<K, V> storage;
+    protected final InternalReplicatedMapStorage<V> storage;
 
     protected final ReplicatedMapService replicatedMapService;
     protected final ReplicationPublisher replicationPublisher;
@@ -81,7 +80,7 @@ abstract class AbstractBaseReplicatedRecordStore<K, V>
         this.localMemberHash = localMember.getUuid().hashCode();
         this.replicatedMapService = replicatedMapService;
         this.replicatedMapConfig = replicatedMapService.getReplicatedMapConfig(name);
-        this.storage = new InternalReplicatedMapStorage<K, V>(replicatedMapConfig);
+        this.storage = new InternalReplicatedMapStorage<V>(replicatedMapConfig);
         this.replicationPublisher = new ReplicationPublisher(this, nodeEngine);
 
         this.ttlEvictionScheduler = EntryTaskSchedulerFactory
@@ -119,7 +118,7 @@ abstract class AbstractBaseReplicatedRecordStore<K, V>
         replicatedMapService.destroyDistributedObject(getName());
     }
 
-    public ReplicationPublisher<K, V> getReplicationPublisher() {
+    public ReplicationPublisher<V> getReplicationPublisher() {
         return replicationPublisher;
     }
 
@@ -127,10 +126,10 @@ abstract class AbstractBaseReplicatedRecordStore<K, V>
         LocalReplicatedMapStatsImpl stats = getReplicatedMapStats();
         stats.setOwnedEntryCount(storage.size());
 
-        List<ReplicatedRecord<K, V>> records = new ArrayList<ReplicatedRecord<K, V>>(storage.values());
+        List<ReplicatedRecord<V>> records = new ArrayList<ReplicatedRecord<V>>(storage.values());
 
         long hits = 0;
-        for (ReplicatedRecord<K, V> record : records) {
+        for (ReplicatedRecord<V> record : records) {
             stats.setLastAccessTime(record.getLastAccessTime());
             stats.setLastUpdateTime(record.getUpdateTime());
             hits += record.getHits();
@@ -164,37 +163,34 @@ abstract class AbstractBaseReplicatedRecordStore<K, V>
         return new HashSet<ReplicatedRecord>(storage.values());
     }
 
-    protected Object getMutex(final Object key) {
-        return mutexes[key.hashCode() != Integer.MIN_VALUE ? Math.abs(key.hashCode()) % mutexes.length : 0];
-    }
 
-    ScheduledEntry<K, V> cancelTtlEntry(K key) {
+    ScheduledEntry<Data, V> cancelTtlEntry(Data key) {
         return ttlEvictionScheduler.cancel(key);
     }
 
-    boolean scheduleTtlEntry(long delayMillis, K key, V object) {
+    boolean scheduleTtlEntry(long delayMillis, Data key, Object object) {
         return ttlEvictionScheduler.schedule(delayMillis, key, object);
     }
 
-    void fireEntryListenerEvent(Object key, Object oldValue, Object value) {
+    void fireEntryListenerEvent(Data key, Object oldValue, Object value) {
         EntryEventType eventType = value == null ? EntryEventType.REMOVED
                 : oldValue == null ? EntryEventType.ADDED : EntryEventType.UPDATED;
-
         fireEntryListenerEvent(key, oldValue, value, eventType);
     }
 
-    void fireEntryListenerEvent(Object key, Object oldValue, Object value, EntryEventType eventType) {
-        Collection<EventRegistration> registrations = eventService.getRegistrations(
-                ReplicatedMapService.SERVICE_NAME, name);
+    void fireEntryListenerEvent(Data key, Object oldValue, Object value, EntryEventType eventType) {
+        Collection<EventRegistration> registrations = eventService.getRegistrations(ReplicatedMapService.SERVICE_NAME, name);
         if (registrations.size() > 0) {
-            EntryEvent event = new EntryEvent(name, nodeEngine.getLocalMember(), eventType.getType(),
-                    key, oldValue, value);
+            Data dataNewValue = nodeEngine.toData(value);
+            Data dataOldValue = nodeEngine.toData(oldValue);
+            String source = nodeEngine.getThisAddress().toString();
+            EntryEventData eventData = new EntryEventData(source, name, nodeEngine.getThisAddress(), key, dataNewValue, dataOldValue, null, eventType.getType());
 
             for (EventRegistration registration : registrations) {
                 EventFilter filter = registration.getFilter();
-                boolean publish = filter == null || filter.eval(marshallKey(key));
+                boolean publish = filter == null || filter.eval(key);
                 if (publish) {
-                    eventService.publishEvent(ReplicatedMapService.SERVICE_NAME, registration, event, name.hashCode());
+                    eventService.publishEvent(ReplicatedMapService.SERVICE_NAME, registration, eventData, name.hashCode());
                 }
             }
         }

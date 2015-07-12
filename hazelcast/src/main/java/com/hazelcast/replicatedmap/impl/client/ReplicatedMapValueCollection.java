@@ -18,10 +18,10 @@ package com.hazelcast.replicatedmap.impl.client;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.Portable;
 import com.hazelcast.nio.serialization.PortableReader;
 import com.hazelcast.nio.serialization.PortableWriter;
-
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -29,15 +29,14 @@ import java.util.Collection;
 /**
  * Class implementing a replicated map value collection result
  */
-public class ReplicatedMapValueCollection
-        implements Portable {
+public class ReplicatedMapValueCollection implements Portable {
 
-    private Collection values;
+    private Collection<Data> values;
 
     ReplicatedMapValueCollection() {
     }
 
-    ReplicatedMapValueCollection(Collection values) {
+    ReplicatedMapValueCollection(Collection<Data> values) {
         this.values = values;
     }
 
@@ -50,8 +49,8 @@ public class ReplicatedMapValueCollection
             throws IOException {
         writer.writeInt("size", values.size());
         ObjectDataOutput out = writer.getRawDataOutput();
-        for (Object value : values) {
-            out.writeObject(value);
+        for (Data value : values) {
+            out.writeData(value);
         }
     }
 
@@ -62,7 +61,7 @@ public class ReplicatedMapValueCollection
         ObjectDataInput in = reader.getRawDataInput();
         values = new ArrayList(size);
         for (int i = 0; i < size; i++) {
-            values.add(in.readObject());
+            values.add(in.readData());
         }
     }
 

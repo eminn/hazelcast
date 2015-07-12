@@ -18,10 +18,10 @@ package com.hazelcast.replicatedmap.impl.client;
 
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.Portable;
 import com.hazelcast.nio.serialization.PortableReader;
 import com.hazelcast.nio.serialization.PortableWriter;
-
 import java.io.IOException;
 import java.util.HashSet;
 import java.util.Set;
@@ -29,15 +29,14 @@ import java.util.Set;
 /**
  * Class to implement a replicated map keySet result
  */
-public class ReplicatedMapKeySet
-        implements Portable {
+public class ReplicatedMapKeySet implements Portable {
 
-    private Set keySet;
+    private Set<Data> keySet;
 
     ReplicatedMapKeySet() {
     }
 
-    public ReplicatedMapKeySet(Set keySet) {
+    public ReplicatedMapKeySet(Set<Data> keySet) {
         this.keySet = keySet;
     }
 
@@ -50,8 +49,8 @@ public class ReplicatedMapKeySet
             throws IOException {
         writer.writeInt("size", keySet.size());
         ObjectDataOutput out = writer.getRawDataOutput();
-        for (Object key : keySet) {
-            out.writeObject(key);
+        for (Data key : keySet) {
+            out.writeData(key);
         }
     }
 
@@ -62,7 +61,7 @@ public class ReplicatedMapKeySet
         ObjectDataInput in = reader.getRawDataInput();
         keySet = new HashSet(size);
         for (int i = 0; i < size; i++) {
-            keySet.add(in.readObject());
+            keySet.add(in.readData());
         }
     }
 

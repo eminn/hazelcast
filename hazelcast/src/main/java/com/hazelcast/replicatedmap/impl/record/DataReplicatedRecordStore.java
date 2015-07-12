@@ -25,7 +25,7 @@ import com.hazelcast.spi.NodeEngine;
  * implementation
  */
 public class DataReplicatedRecordStore
-        extends AbstractReplicatedRecordStore<Data, Data> {
+        extends AbstractReplicatedRecordStore<Data> {
 
     private final NodeEngine nodeEngine;
 
@@ -35,24 +35,15 @@ public class DataReplicatedRecordStore
         this.nodeEngine = nodeEngine;
     }
 
-    @Override
-    public Object unmarshallKey(Object key) {
-        return key == null ? null : nodeEngine.toObject(key);
+    ReplicatedRecord buildReplicatedRecord(Data key, Object value, long ttlMillis) {
+        Data dataValue = nodeEngine.toData(value);
+        return new ReplicatedRecord(key, dataValue, localMemberHash, ttlMillis);
     }
 
     @Override
-    public Object unmarshallValue(Object value) {
-        return value == null ? null : nodeEngine.toObject(value);
+    public boolean isEquals(Object value1, Object value2) {
+        return nodeEngine.toData(value1).equals(nodeEngine.toData(value2));
     }
 
-    @Override
-    public Object marshallKey(Object key) {
-        return key == null ? null : nodeEngine.toData(key);
-    }
-
-    @Override
-    public Object marshallValue(Object value) {
-        return value == null ? null : nodeEngine.toData(value);
-    }
 
 }

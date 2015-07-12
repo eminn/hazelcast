@@ -18,13 +18,13 @@ package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.core.EntryEventType;
 import com.hazelcast.core.EntryListener;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
 import com.hazelcast.replicatedmap.impl.messages.ReplicationMessage;
 import com.hazelcast.spi.EventFilter;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.util.Clock;
-
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -39,11 +39,9 @@ import static com.hazelcast.util.Preconditions.isNotNull;
 /**
  * This is the base class for all {@link ReplicatedRecordStore} implementations
  *
- * @param <K> key type
  * @param <V> value type
  */
-public abstract class AbstractReplicatedRecordStore<K, V>
-        extends AbstractBaseReplicatedRecordStore<K, V> {
+public abstract class AbstractReplicatedRecordStore<V> extends AbstractBaseReplicatedRecordStore<V> {
     static final String CLEAR_REPLICATION_MAGIC_KEY = ReplicatedMapService.SERVICE_NAME + "$CLEAR$MESSAGE$";
 
     // entries are not removed on replicatedMap.remove() as it would reset a vector clock and we wouldn't be able to
@@ -57,72 +55,70 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     @Override
-    public void removeTombstone(Object key) {
-        isNotNull(key, "key");
-        storage.checkState();
-        K marshalledKey = (K) marshallKey(key);
-        synchronized (getMutex(marshalledKey)) {
-            ReplicatedRecord<K, V> current = storage.get(marshalledKey);
-            if (current == null || current.getValueInternal() != null) {
-                return;
-            }
-            storage.remove(marshalledKey, current);
-        }
+    public Object unmarshall(Object object) {
+        return object == null ? null : nodeEngine.toObject(object);
     }
 
     @Override
-    public Object remove(Object key) {
+    public Data marshall(Object object) {
+        return object == null ? null : nodeEngine.toData(object);
+    }
+
+
+    @Override
+    public void removeTombstone(Data key) {
+        isNotNull(key, "key");
+        storage.checkState();
+        ReplicatedRecord<V> current = storage.get(key);
+        if (current == null || current.getValueInternal() != null) {
+            return;
+        }
+        storage.remove(key, current);
+    }
+
+    @Override
+    public Object remove(Data key) {
         isNotNull(key, "key");
         long time = Clock.currentTimeMillis();
         storage.checkState();
         V oldValue;
-        K marshalledKey = (K) marshallKey(key);
-        synchronized (getMutex(marshalledKey)) {
-            final ReplicatedRecord current = storage.get(marshalledKey);
-            final VectorClockTimestamp vectorClockTimestamp;
-            if (current == null) {
-                oldValue = null;
-            } else {
-                oldValue = (V) current.getValueInternal();
-                if (oldValue != null) {
-                    current.setValue(null, localMemberHash, TOMBSTONE_REMOVAL_PERIOD_MS);
-                    scheduleTtlEntry(TOMBSTONE_REMOVAL_PERIOD_MS, marshalledKey, null);
-                    vectorClockTimestamp = current.incrementVectorClock(localMember);
-                    ReplicationMessage message = buildReplicationMessage(key, null, vectorClockTimestamp,
-                            TOMBSTONE_REMOVAL_PERIOD_MS);
-                    replicationPublisher.publishReplicatedMessage(message);
-                }
+        final ReplicatedRecord current = storage.get(key);
+        if (current == null) {
+            oldValue = null;
+        } else {
+            oldValue = (V) current.getValueInternal();
+            if (oldValue != null) {
+                current.setValue(null, localMemberHash, TOMBSTONE_REMOVAL_PERIOD_MS);
+                scheduleTtlEntry(TOMBSTONE_REMOVAL_PERIOD_MS, key, null);
+                ReplicationMessage message = buildReplicationMessage(key, null, TOMBSTONE_REMOVAL_PERIOD_MS);
+                replicationPublisher.publishReplicatedMessage(message);
             }
         }
-        Object unmarshalledOldValue = unmarshallValue(oldValue);
+        Object unmarshalledOldValue = unmarshall(oldValue);
         fireEntryListenerEvent(key, unmarshalledOldValue, null);
         if (replicatedMapConfig.isStatisticsEnabled()) {
             mapStats.incrementRemoves(Clock.currentTimeMillis() - time);
         }
-        return unmarshalledOldValue;
+        return oldValue;
     }
 
     @Override
-    public void evict(Object key) {
+    public void evict(Data key) {
         isNotNull(key, "key");
         long time = Clock.currentTimeMillis();
         storage.checkState();
         V oldValue;
-        K marshalledKey = (K) marshallKey(key);
-        synchronized (getMutex(marshalledKey)) {
-            final ReplicatedRecord current = storage.get(marshalledKey);
-            if (current == null) {
-                oldValue = null;
-            } else {
-                oldValue = (V) current.getValueInternal();
-                if (oldValue != null) {
-                    current.setValueInternal(null, localMemberHash, TOMBSTONE_REMOVAL_PERIOD_MS);
-                    scheduleTtlEntry(TOMBSTONE_REMOVAL_PERIOD_MS, marshalledKey, null);
-                    current.incrementVectorClock(localMember);
-                }
+        final ReplicatedRecord current = storage.get(key);
+        if (current == null) {
+            oldValue = null;
+        } else {
+            oldValue = (V) current.getValueInternal();
+            if (oldValue != null) {
+                current.setValueInternal(null, localMemberHash, TOMBSTONE_REMOVAL_PERIOD_MS);
+                scheduleTtlEntry(TOMBSTONE_REMOVAL_PERIOD_MS, key, null);
             }
         }
-        Object unmarshalledOldValue = unmarshallValue(oldValue);
+        Object unmarshalledOldValue = unmarshall(oldValue);
         fireEntryListenerEvent(key, unmarshalledOldValue, null, EntryEventType.EVICTED);
         if (replicatedMapConfig.isStatisticsEnabled()) {
             mapStats.incrementRemoves(Clock.currentTimeMillis() - time);
@@ -130,11 +126,11 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     @Override
-    public Object get(Object key) {
+    public Object get(Data key) {
         isNotNull(key, "key");
         long time = Clock.currentTimeMillis();
         storage.checkState();
-        ReplicatedRecord replicatedRecord = storage.get(marshallKey(key));
+        ReplicatedRecord replicatedRecord = storage.get(key);
 
         // Force return null on ttl expiration (but before cleanup thread run)
         long ttlMillis = replicatedRecord == null ? 0 : replicatedRecord.getTtlMillis();
@@ -142,7 +138,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
             replicatedRecord = null;
         }
 
-        Object value = replicatedRecord == null ? null : unmarshallValue(replicatedRecord.getValue());
+        Object value = replicatedRecord == null ? null : unmarshall(replicatedRecord.getValue());
         if (replicatedMapConfig.isStatisticsEnabled()) {
             mapStats.incrementGets(Clock.currentTimeMillis() - time);
         }
@@ -150,7 +146,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     @Override
-    public Object put(Object key, Object value) {
+    public Object put(Data key, Object value) {
         isNotNull(key, "key");
         isNotNull(value, "value");
         storage.checkState();
@@ -158,7 +154,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     @Override
-    public Object put(Object key, Object value, long ttl, TimeUnit timeUnit) {
+    public Object put(Data key, Object value, long ttl, TimeUnit timeUnit) {
         isNotNull(key, "key");
         isNotNull(value, "value");
         isNotNull(timeUnit, "timeUnit");
@@ -168,39 +164,34 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         long time = Clock.currentTimeMillis();
         storage.checkState();
         V oldValue = null;
-        K marshalledKey = (K) marshallKey(key);
-        V marshalledValue = (V) marshallValue(value);
-        synchronized (getMutex(marshalledKey)) {
-            final long ttlMillis = ttl == 0 ? 0 : timeUnit.toMillis(ttl);
-            final ReplicatedRecord old = storage.get(marshalledKey);
-            ReplicatedRecord<K, V> record = old;
-            if (old == null) {
-                record = buildReplicatedRecord(marshalledKey, marshalledValue, new VectorClockTimestamp(), ttlMillis);
-                storage.put(marshalledKey, record);
-            } else {
-                oldValue = (V) old.getValueInternal();
-                storage.get(marshalledKey).setValue(marshalledValue, localMemberHash, ttlMillis);
-            }
-            if (ttlMillis > 0) {
-                scheduleTtlEntry(ttlMillis, marshalledKey, marshalledValue);
-            } else {
-                cancelTtlEntry(marshalledKey);
-            }
-
-            VectorClockTimestamp vectorClockTimestamp = record.incrementVectorClock(localMember);
-            ReplicationMessage message = buildReplicationMessage(key, value, vectorClockTimestamp, ttlMillis);
-            replicationPublisher.publishReplicatedMessage(message);
+        final long ttlMillis = ttl == 0 ? 0 : timeUnit.toMillis(ttl);
+        final ReplicatedRecord<V> old = storage.get(key);
+        ReplicatedRecord<V> record = old;
+        if (old == null) {
+            record = buildReplicatedRecord(key, value, ttlMillis);
+            storage.put(key, record);
+        } else {
+            oldValue = old.getValueInternal();
+            storage.get(key).setValue((V) value, localMemberHash, ttlMillis);
         }
-        Object unmarshalledOldValue = unmarshallValue(oldValue);
-        fireEntryListenerEvent(key, unmarshalledOldValue, value);
+        if (ttlMillis > 0) {
+            scheduleTtlEntry(ttlMillis, key, value);
+        } else {
+            cancelTtlEntry(key);
+        }
+
+        ReplicationMessage message = buildReplicationMessage(key, value, ttlMillis);
+        replicationPublisher.publishReplicatedMessage(message);
+        fireEntryListenerEvent(key, oldValue, value);
         if (replicatedMapConfig.isStatisticsEnabled()) {
             mapStats.incrementPuts(Clock.currentTimeMillis() - time);
         }
+        Object unmarshalledOldValue = unmarshall(oldValue);
         return unmarshalledOldValue;
     }
 
     @Override
-    public boolean containsKey(Object key) {
+    public boolean containsKey(Data key) {
         isNotNull(key, "key");
         storage.checkState();
         mapStats.incrementOtherOperations();
@@ -209,8 +200,8 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     // IMPORTANT >> Increments hit counter
-    private boolean containsKeyAndValue(Object key) {
-        ReplicatedRecord replicatedRecord = storage.get(marshallKey(key));
+    private boolean containsKeyAndValue(Data key) {
+        ReplicatedRecord replicatedRecord = storage.get(key);
         return replicatedRecord != null && replicatedRecord.getValue() != null;
     }
 
@@ -219,14 +210,15 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         isNotNull(value, "value");
         storage.checkState();
         mapStats.incrementOtherOperations();
-        for (Map.Entry<K, ReplicatedRecord<K, V>> entry : storage.entrySet()) {
+        for (Map.Entry<Data, ReplicatedRecord<V>> entry : storage.entrySet()) {
             V entryValue = entry.getValue().getValue();
-            if (value == entryValue || (entryValue != null && unmarshallValue(entryValue).equals(value))) {
+            if (compare(value, entryValue)) {
                 return true;
             }
         }
         return false;
     }
+
 
     @Override
     public Set keySet() {
@@ -234,7 +226,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         mapStats.incrementOtherOperations();
 
         // Lazy evaluation to prevent to much copying
-        return new LazySet<K, V, K>(new KeySetIteratorFactory<K, V>(this), storage);
+        return new LazySet<Data, V, Data>(new KeySetIteratorFactory<Data, V>(this), storage);
     }
 
     @Override
@@ -243,7 +235,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         mapStats.incrementOtherOperations();
 
         // Lazy evaluation to prevent to much copying
-        return new LazyCollection<K, V>(new ValuesIteratorFactory<K, V>(this), storage);
+        return new LazyCollection<Data, V>(new ValuesIteratorFactory<Data, V>(this), storage);
     }
 
     @Override
@@ -251,7 +243,7 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         storage.checkState();
         List values = new ArrayList(storage.size());
         for (ReplicatedRecord record : storage.values()) {
-            values.add(unmarshallValue(record.getValue()));
+            values.add(unmarshall(record.getValue()));
         }
         Collections.sort(values, comparator);
         mapStats.incrementOtherOperations();
@@ -264,14 +256,14 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         mapStats.incrementOtherOperations();
 
         // Lazy evaluation to prevent to much copying
-        return new LazySet<K, V, Map.Entry<K, V>>(new EntrySetIteratorFactory<K, V>(this), storage);
+        return new LazySet<Data, V, Map.Entry<Data, V>>(new EntrySetIteratorFactory<Data, V>(this), storage);
     }
 
     @Override
-    public ReplicatedRecord getReplicatedRecord(Object key) {
+    public ReplicatedRecord getReplicatedRecord(Data key) {
         isNotNull(key, "key");
         storage.checkState();
-        return storage.get(marshallKey(key));
+        return storage.get(key);
     }
 
     @Override
@@ -300,17 +292,17 @@ public abstract class AbstractReplicatedRecordStore<K, V>
     }
 
     @Override
-    public String addEntryListener(EntryListener listener, Object key) {
+    public String addEntryListener(EntryListener listener, Data key) {
         isNotNull(listener, "listener");
-        EventFilter eventFilter = new ReplicatedEntryEventFilter(marshallKey(key));
+        EventFilter eventFilter = new ReplicatedEntryEventFilter(key);
         mapStats.incrementOtherOperations();
         return replicatedMapService.addEventListener(listener, eventFilter, getName());
     }
 
     @Override
-    public String addEntryListener(EntryListener listener, Predicate predicate, Object key) {
+    public String addEntryListener(EntryListener listener, Predicate predicate, Data key) {
         isNotNull(listener, "listener");
-        EventFilter eventFilter = new ReplicatedQueryEventFilter(marshallKey(key), predicate);
+        EventFilter eventFilter = new ReplicatedQueryEventFilter(key, predicate);
         mapStats.incrementOtherOperations();
         return replicatedMapService.addEventListener(listener, eventFilter, getName());
     }
@@ -322,11 +314,26 @@ public abstract class AbstractReplicatedRecordStore<K, V>
         return replicatedMapService.removeEventListener(getName(), id);
     }
 
-    private ReplicationMessage buildReplicationMessage(Object key, Object value, VectorClockTimestamp timestamp, long ttlMillis) {
-        return new ReplicationMessage(getName(), key, value, timestamp, localMember, localMemberHash, ttlMillis);
+    private ReplicationMessage buildReplicationMessage(Data key, Object value, long ttlMillis) {
+        return new ReplicationMessage(getName(), key, marshall(value), localMember, nodeEngine.getPartitionService().getPartitionId(key), ttlMillis);
     }
 
-    private ReplicatedRecord buildReplicatedRecord(Object key, Object value, VectorClockTimestamp timestamp, long ttlMillis) {
-        return new ReplicatedRecord(key, value, timestamp, localMemberHash, ttlMillis);
+    abstract ReplicatedRecord buildReplicatedRecord(Data key, Object value, long ttlMillis);
+
+    abstract boolean isEquals(Object value1, Object value2);
+
+    public boolean compare(Object value1, Object value2) {
+        if (value1 == null && value2 == null) {
+            return true;
+        }
+        if (value1 == null) {
+            return false;
+        }
+        if (value2 == null) {
+            return false;
+        }
+        return isEquals(value1, value2);
     }
+
+
 }

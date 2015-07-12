@@ -20,15 +20,14 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
 import com.hazelcast.replicatedmap.impl.messages.ReplicationMessage;
 import com.hazelcast.replicatedmap.impl.record.AbstractReplicatedRecordStore;
 import com.hazelcast.replicatedmap.impl.record.ReplicatedRecord;
 import com.hazelcast.replicatedmap.impl.record.ReplicationPublisher;
-import com.hazelcast.replicatedmap.impl.record.VectorClockTimestamp;
 import edu.umd.cs.findbugs.annotations.SuppressWarnings;
-
 import java.io.IOException;
 
 /**
@@ -84,13 +83,12 @@ public class ReplicatedMapInitChunkOperation
             for (int i = 0; i < recordCount; i++) {
                 ReplicatedRecord record = replicatedRecords[i];
 
-                Object key = record.getKeyInternal();
-                Object value = record.getValueInternal();
-                VectorClockTimestamp timestamp = record.getVectorClockTimestamp();
+                Data key = replicatedMapService.toData(record.getKeyInternal());
+                Data value = replicatedMapService.toData(record.getValueInternal());
                 int updateHash = record.getLatestUpdateHash();
                 long ttlMillis = record.getTtlMillis();
 
-                ReplicationMessage update = new ReplicationMessage(name, key, value, timestamp, origin, updateHash, ttlMillis);
+                ReplicationMessage update = new ReplicationMessage(name, key, value, origin, updateHash, ttlMillis);
                 replicationPublisher.queueUpdateMessage(update);
             }
             if (finalChunk) {

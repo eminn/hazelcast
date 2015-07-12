@@ -19,13 +19,17 @@ package com.hazelcast.replicatedmap.impl;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.ReplicatedMap;
 import com.hazelcast.monitor.LocalReplicatedMapStats;
+import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.nio.serialization.SerializationService;
+import com.hazelcast.partition.InternalPartitionService;
 import com.hazelcast.query.Predicate;
+import com.hazelcast.replicatedmap.impl.operation.PutOperation;
 import com.hazelcast.replicatedmap.impl.record.AbstractReplicatedRecordStore;
-import com.hazelcast.replicatedmap.impl.record.ReplicationPublisher;
 import com.hazelcast.spi.AbstractDistributedObject;
 import com.hazelcast.spi.InitializingObject;
+import com.hazelcast.spi.InternalCompletableFuture;
 import com.hazelcast.spi.NodeEngine;
-
+import com.hazelcast.spi.OperationService;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.Map;
@@ -45,11 +49,17 @@ public class ReplicatedMapProxy<K, V>
         extends AbstractDistributedObject
         implements ReplicatedMap<K, V>, InitializingObject {
 
-    private final AbstractReplicatedRecordStore<K, V> replicatedRecordStore;
+    private final AbstractReplicatedRecordStore<V> replicatedRecordStore;
+    private final OperationService operationService;
+    private final InternalPartitionService partitionService;
+    private SerializationService serializationService;
 
-    ReplicatedMapProxy(NodeEngine nodeEngine, AbstractReplicatedRecordStore<K, V> replicatedRecordStore) {
+    ReplicatedMapProxy(NodeEngine nodeEngine, AbstractReplicatedRecordStore<V> replicatedRecordStore) {
         super(nodeEngine, replicatedRecordStore.getReplicatedMapService());
         this.replicatedRecordStore = replicatedRecordStore;
+        this.operationService = getNodeEngine().getOperationService();
+        this.serializationService = getNodeEngine().getSerializationService();
+        partitionService = getNodeEngine().getPartitionService();
     }
 
     @Override
@@ -79,7 +89,8 @@ public class ReplicatedMapProxy<K, V>
 
     @Override
     public boolean containsKey(Object key) {
-        return replicatedRecordStore.containsKey(key);
+        Data dataKey = serializationService.toData(key);
+        return replicatedRecordStore.containsKey(dataKey);
     }
 
     @Override
@@ -89,22 +100,34 @@ public class ReplicatedMapProxy<K, V>
 
     @Override
     public V get(Object key) {
-        return (V) replicatedRecordStore.get(key);
+        Data dataKey = replicatedRecordStore.marshall(key);
+        return (V) replicatedRecordStore.get(dataKey);
     }
 
     @Override
     public V put(K key, V value) {
-        return (V) replicatedRecordStore.put(key, value);
+        Data dataKey = serializationService.toData(key);
+        Data dataValue = serializationService.toData(value);
+        PutOperation op = new PutOperation(getName(), dataKey, dataValue);
+        int partitionId = partitionService.getPartitionId(dataKey);
+        InternalCompletableFuture<Object> future = operationService.invokeOnPartition(ReplicatedMapService.SERVICE_NAME, op, partitionId);
+        return (V) serializationService.toObject(future.getSafely());
     }
 
     @Override
     public V put(K key, V value, long ttl, TimeUnit timeUnit) {
-        return (V) replicatedRecordStore.put(key, value, ttl, timeUnit);
+        Data dataKey = serializationService.toData(key);
+        Data dataValue = serializationService.toData(value);
+        PutOperation op = new PutOperation(getName(), dataKey, dataValue);
+        int partitionId = partitionService.getPartitionId(dataKey);
+        InternalCompletableFuture<Object> future = operationService.invokeOnPartition(ReplicatedMapService.SERVICE_NAME, op, partitionId);
+        return (V) serializationService.toObject(future.getSafely());
     }
 
     @Override
     public V remove(Object key) {
-        return (V) replicatedRecordStore.remove(key);
+        Data dataKey = replicatedRecordStore.marshall(key);
+        return (V) replicatedRecordStore.remove(dataKey);
     }
 
     @Override
@@ -132,7 +155,8 @@ public class ReplicatedMapProxy<K, V>
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener, K key) {
-        return replicatedRecordStore.addEntryListener(listener, key);
+        Data dataKey = replicatedRecordStore.marshall(key);
+        return replicatedRecordStore.addEntryListener(listener, dataKey);
     }
 
     @Override
@@ -142,7 +166,8 @@ public class ReplicatedMapProxy<K, V>
 
     @Override
     public String addEntryListener(EntryListener<K, V> listener, Predicate<K, V> predicate, K key) {
-        return replicatedRecordStore.addEntryListener(listener, predicate, key);
+        Data dataKey = replicatedRecordStore.marshall(key);
+        return replicatedRecordStore.addEntryListener(listener, predicate, dataKey);
     }
 
     @Override
@@ -165,25 +190,6 @@ public class ReplicatedMapProxy<K, V>
         return replicatedRecordStore.entrySet();
     }
 
-    public boolean storageEquals(Object o) {
-        if (this == o) {
-            return true;
-        }
-        if (o == null || getClass() != o.getClass()) {
-            return false;
-        }
-        if (!super.equals(o)) {
-            return false;
-        }
-
-        ReplicatedMapProxy that = (ReplicatedMapProxy) o;
-
-        if (!replicatedRecordStore.equals(that.replicatedRecordStore)) {
-            return false;
-        }
-
-        return true;
-    }
 
     @Override
     public int hashCode() {
@@ -204,11 +210,6 @@ public class ReplicatedMapProxy<K, V>
 
     public LocalReplicatedMapStats getReplicatedMapStats() {
         return replicatedRecordStore.createReplicatedMapStats();
-    }
-
-    public void setPreReplicationHook(PreReplicationHook preReplicationHook) {
-        ReplicationPublisher<K, V> replicationPublisher = replicatedRecordStore.getReplicationPublisher();
-        replicationPublisher.setPreReplicationHook(preReplicationHook);
     }
 
 }

@@ -16,6 +16,7 @@
 
 package com.hazelcast.replicatedmap.impl;
 
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.replicatedmap.impl.record.ReplicatedRecordStore;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.util.scheduler.EntryTaskScheduler;
@@ -28,7 +29,7 @@ import java.util.Collection;
  * Actual eviction processor implementation to remove values to evict values from the replicated map
  */
 public class ReplicatedMapEvictionProcessor
-        implements ScheduledEntryProcessor<Object, Object> {
+        implements ScheduledEntryProcessor<Data, Object> {
 
     final NodeEngine nodeEngine;
     final ReplicatedMapService replicatedMapService;
@@ -40,12 +41,12 @@ public class ReplicatedMapEvictionProcessor
         this.mapName = mapName;
     }
 
-    public void process(EntryTaskScheduler<Object, Object> scheduler, Collection<ScheduledEntry<Object, Object>> entries) {
+    public void process(EntryTaskScheduler<Data, Object> scheduler, Collection<ScheduledEntry<Data, Object>> entries) {
         final ReplicatedRecordStore replicatedRecordStore = replicatedMapService.getReplicatedRecordStore(mapName, false);
 
         if (replicatedRecordStore != null) {
-            for (ScheduledEntry<Object, Object> entry : entries) {
-                Object key = entry.getKey();
+            for (ScheduledEntry<Data, Object> entry : entries) {
+                Data key = entry.getKey();
                 if (entry.getValue() == null) {
                     replicatedRecordStore.removeTombstone(key);
                 } else {

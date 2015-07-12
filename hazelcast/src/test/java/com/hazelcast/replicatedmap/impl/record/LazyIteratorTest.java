@@ -18,55 +18,57 @@ package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.config.ReplicatedMapConfig;
 import com.hazelcast.core.EntryListener;
+import com.hazelcast.nio.serialization.Data;
+import com.hazelcast.nio.serialization.DefaultSerializationServiceBuilder;
+import com.hazelcast.nio.serialization.SerializationService;
 import com.hazelcast.query.Predicate;
 import com.hazelcast.test.HazelcastParallelClassRunner;
 import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.annotation.QuickTest;
 import com.hazelcast.util.HashUtil;
-import org.junit.Test;
-import org.junit.experimental.categories.Category;
-import org.junit.runner.RunWith;
-
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import org.junit.Test;
+import org.junit.experimental.categories.Category;
+import org.junit.runner.RunWith;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.fail;
 
 @RunWith(HazelcastParallelClassRunner.class)
 @Category(QuickTest.class)
-public class LazyIteratorTest
-        extends HazelcastTestSupport {
+public class LazyIteratorTest extends HazelcastTestSupport {
 
-    private static final InternalReplicatedMapStorage<String, Integer> TEST_DATA_SIMPLE;
-    private static final InternalReplicatedMapStorage<String, Integer> TEST_DATA_TOMBS;
+    private static final InternalReplicatedMapStorage<Integer> TEST_DATA_SIMPLE;
+    private static final InternalReplicatedMapStorage<Integer> TEST_DATA_TOMBS;
 
     private static final ReplicatedRecordStore REPLICATED_RECORD_STORE = new NoOpReplicatedRecordStore();
+    private static final SerializationService serializationService;
 
     static {
-        TEST_DATA_SIMPLE = new InternalReplicatedMapStorage<String, Integer>(new ReplicatedMapConfig());
+        DefaultSerializationServiceBuilder builder = new DefaultSerializationServiceBuilder();
+        serializationService = builder.build();
+        TEST_DATA_SIMPLE = new InternalReplicatedMapStorage<Integer>(new ReplicatedMapConfig());
         for (int i = 0; i < 100; i++) {
             String key = "key-" + i;
             int hash = HashUtil.hashCode(key);
-            VectorClockTimestamp timestamp = new VectorClockTimestamp();
-            TEST_DATA_SIMPLE.put(key, new ReplicatedRecord<String, Integer>(key, i, timestamp, hash, -1));
+            Data dataKey = serializationService.toData(key);
+            TEST_DATA_SIMPLE.put(dataKey, new ReplicatedRecord<Integer>(dataKey, i, hash, -1));
         }
-        TEST_DATA_TOMBS = new InternalReplicatedMapStorage<String, Integer>(new ReplicatedMapConfig());
+        TEST_DATA_TOMBS = new InternalReplicatedMapStorage<Integer>(new ReplicatedMapConfig());
         for (int i = 0; i < 100; i++) {
             String key = "key-" + i;
             int hash = HashUtil.hashCode(key);
-            VectorClockTimestamp timestamp = new VectorClockTimestamp();
             Integer value = i % 2 == 0 ? i : null;
-            ReplicatedRecord<String, Integer> record = new ReplicatedRecord<String, Integer>(key, value, timestamp, hash, -1);
-            TEST_DATA_TOMBS.put(key, record);
+            Data dataKey = serializationService.toData(key);
+            ReplicatedRecord<Integer> record = new ReplicatedRecord<Integer>(dataKey, value, hash, -1);
+            TEST_DATA_TOMBS.put(dataKey, record);
         }
     }
 
@@ -556,8 +558,7 @@ public class LazyIteratorTest
         assertEquals(50, array.length);
     }
 
-    private static class NoOpReplicatedRecordStore
-            implements ReplicatedRecordStore {
+    private static class NoOpReplicatedRecordStore implements ReplicatedRecordStore {
 
         @Override
         public String getName() {
@@ -565,37 +566,36 @@ public class LazyIteratorTest
         }
 
         @Override
-        public Object remove(Object key) {
+        public Object remove(Data key) {
             return null;
         }
 
         @Override
-        public void evict(Object key) {
+        public void evict(Data key) {
+        }
+
+        @Override
+        public void removeTombstone(Data key) {
 
         }
 
         @Override
-        public void removeTombstone(Object key) {
-
-        }
-
-        @Override
-        public Object get(Object key) {
+        public Object get(Data key) {
             return null;
         }
 
         @Override
-        public Object put(Object key, Object value) {
+        public Object put(Data key, Object value) {
             return null;
         }
 
         @Override
-        public Object put(Object key, Object value, long ttl, TimeUnit timeUnit) {
+        public Object put(Data key, Object value, long ttl, TimeUnit timeUnit) {
             return null;
         }
 
         @Override
-        public boolean containsKey(Object key) {
+        public boolean containsKey(Data key) {
             return false;
         }
 
@@ -605,7 +605,7 @@ public class LazyIteratorTest
         }
 
         @Override
-        public ReplicatedRecord getReplicatedRecord(Object key) {
+        public ReplicatedRecord getReplicatedRecord(Data key) {
             return null;
         }
 
@@ -644,32 +644,22 @@ public class LazyIteratorTest
         }
 
         @Override
-        public Object unmarshallKey(Object key) {
-            return key;
+        public Object unmarshall(Object object) {
+            return serializationService.toObject(object);
         }
 
         @Override
-        public Object unmarshallValue(Object value) {
-            return value;
+        public Data marshall(Object object) {
+            return serializationService.toData(object);
         }
 
         @Override
-        public Object marshallKey(Object key) {
-            return key;
-        }
-
-        @Override
-        public Object marshallValue(Object value) {
-            return value;
-        }
-
-        @Override
-        public String addEntryListener(EntryListener listener, Object key) {
+        public String addEntryListener(EntryListener listener, Data key) {
             return null;
         }
 
         @Override
-        public String addEntryListener(EntryListener listener, Predicate predicate, Object key) {
+        public String addEntryListener(EntryListener listener, Predicate predicate, Data key) {
             return null;
         }
 

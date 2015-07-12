@@ -17,22 +17,19 @@
 package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.replicatedmap.impl.record.LazySet.IteratorFactory;
-
 import java.lang.reflect.Array;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map.Entry;
 
-class LazyCollection<K, V>
-        implements Collection<V> {
+class LazyCollection<K, V> implements Collection<V> {
 
-    private final InternalReplicatedMapStorage<K, V> storage;
+    private final InternalReplicatedMapStorage<V> storage;
     private final IteratorFactory<K, V, V> iteratorFactory;
-    private final Collection<ReplicatedRecord<K, V>> values;
+    private final Collection<ReplicatedRecord<V>> values;
 
-    public LazyCollection(IteratorFactory<K, V, V> iteratorFactory, InternalReplicatedMapStorage<K, V> storage) {
+    public LazyCollection(IteratorFactory<K, V, V> iteratorFactory, InternalReplicatedMapStorage<V> storage) {
         this.iteratorFactory = iteratorFactory;
         this.values = storage.values();
         this.storage = storage;
@@ -55,7 +52,7 @@ class LazyCollection<K, V>
 
     @Override
     public Iterator<V> iterator() {
-        Iterator<Entry<K, ReplicatedRecord<K, V>>> iterator = storage.entrySet().iterator();
+        Iterator iterator = storage.entrySet().iterator();
         return iteratorFactory.create(iterator);
     }
 

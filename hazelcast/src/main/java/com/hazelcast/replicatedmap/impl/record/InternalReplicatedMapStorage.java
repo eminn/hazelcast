@@ -17,7 +17,7 @@
 package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.config.ReplicatedMapConfig;
-
+import com.hazelcast.nio.serialization.Data;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Set;
@@ -32,12 +32,11 @@ import java.util.concurrent.locks.ReentrantLock;
  * This class is meant to encapsulate the actual storage system and support automatic waiting for finishing load operations if
  * configured in the {@link com.hazelcast.config.ReplicatedMapConfig}
  *
- * @param <K> key type
  * @param <V> value type
  */
-class InternalReplicatedMapStorage<K, V> {
+class InternalReplicatedMapStorage<V> {
 
-    private final ConcurrentMap<K, ReplicatedRecord<K, V>> storage = new ConcurrentHashMap<K, ReplicatedRecord<K, V>>();
+    private final ConcurrentMap<Data, ReplicatedRecord<V>> storage = new ConcurrentHashMap<Data, ReplicatedRecord<V>>();
 
     private final AtomicBoolean loaded = new AtomicBoolean(false);
     private final Lock waitForLoadedLock = new ReentrantLock();
@@ -51,15 +50,15 @@ class InternalReplicatedMapStorage<K, V> {
         this.replicatedMapConfig = replicatedMapConfig;
     }
 
-    public ReplicatedRecord<K, V> get(Object key) {
+    public ReplicatedRecord<V> get(Object key) {
         return storage.get(key);
     }
 
-    public ReplicatedRecord<K, V> put(K key, ReplicatedRecord<K, V> replicatedRecord) {
+    public ReplicatedRecord<V> put(Data key, ReplicatedRecord<V> replicatedRecord) {
         return storage.put(key, replicatedRecord);
     }
 
-    public boolean remove(K key, ReplicatedRecord<K, V> replicatedRecord) {
+    public boolean remove(Data key, ReplicatedRecord<V> replicatedRecord) {
         return storage.remove(key, replicatedRecord);
     }
 
@@ -67,15 +66,15 @@ class InternalReplicatedMapStorage<K, V> {
         return storage.containsKey(key);
     }
 
-    public Set<Map.Entry<K, ReplicatedRecord<K, V>>> entrySet() {
+    public Set<Map.Entry<Data, ReplicatedRecord<V>>> entrySet() {
         return storage.entrySet();
     }
 
-    public Collection<ReplicatedRecord<K, V>> values() {
+    public Collection<ReplicatedRecord<V>> values() {
         return storage.values();
     }
 
-    public Set<K> keySet() {
+    public Set<Data> keySet() {
         return storage.keySet();
     }
 
@@ -89,7 +88,7 @@ class InternalReplicatedMapStorage<K, V> {
 
     public int size() {
         int count = 0;
-        for (ReplicatedRecord<K, V> record : storage.values()) {
+        for (ReplicatedRecord<V> record : storage.values()) {
             if (record.isTombstone()) {
                 continue;
             }

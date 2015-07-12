@@ -27,8 +27,7 @@ import java.io.IOException;
 /**
  * This replicated message contains multiple replications at once
  */
-public class MultiReplicationMessage
-        implements IdentifiedDataSerializable {
+public class MultiReplicationMessage implements IdentifiedDataSerializable {
 
     private String name;
     private ReplicationMessage[] replicationMessages;
@@ -54,8 +53,7 @@ public class MultiReplicationMessage
     }
 
     @Override
-    public void writeData(ObjectDataOutput out)
-            throws IOException {
+    public void writeData(ObjectDataOutput out) throws IOException {
         out.writeUTF(name);
         out.writeInt(replicationMessages.length);
         for (int i = 0; i < replicationMessages.length; i++) {
@@ -64,8 +62,7 @@ public class MultiReplicationMessage
     }
 
     @Override
-    public void readData(ObjectDataInput in)
-            throws IOException {
+    public void readData(ObjectDataInput in) throws IOException {
         name = in.readUTF();
         int length = in.readInt();
         replicationMessages = new ReplicationMessage[length];

@@ -4,6 +4,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.config.InMemoryFormat;
 import com.hazelcast.config.ReplicatedMapConfig;
 import com.hazelcast.core.ReplicatedMap;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapProxy;
 import com.hazelcast.replicatedmap.impl.record.AbstractReplicatedRecordStore;
 import com.hazelcast.replicatedmap.impl.record.ReplicatedRecord;
@@ -66,15 +67,22 @@ public abstract class ReplicatedMapBaseTest extends HazelcastTestSupport {
     }
 
     @SuppressWarnings("unchecked")
-    protected <K, V> ReplicatedRecord<K, V> getReplicatedRecord(ReplicatedMap<K, V> map, K key) throws Exception {
+    protected <K, V> ReplicatedRecord<V> getReplicatedRecord(ReplicatedMap<K, V> map, K key) throws Exception {
         ReplicatedMapProxy<K, V> proxy = (ReplicatedMapProxy<K, V>) map;
-        return ((AbstractReplicatedRecordStore<K, V>) REPLICATED_RECORD_STORE.get(proxy)).getReplicatedRecord(key);
+        Data dataKey = proxy.getNodeEngine().getSerializationService().toData(key);
+        return ((AbstractReplicatedRecordStore<V>) REPLICATED_RECORD_STORE.get(proxy)).getReplicatedRecord(dataKey);
     }
 
     @SuppressWarnings("unchecked")
-    protected <K, V> ReplicationPublisher<K, V> getReplicationPublisher(ReplicatedMap<K, V> map) throws Exception {
+    protected <K, V> ReplicationPublisher<V> getReplicationPublisher(ReplicatedMap<K, V> map) throws Exception {
         ReplicatedMapProxy<K, V> proxy = (ReplicatedMapProxy<K, V>) map;
-        return ((AbstractReplicatedRecordStore<K, V>) REPLICATED_RECORD_STORE.get(proxy)).getReplicationPublisher();
+        return ((AbstractReplicatedRecordStore<V>) REPLICATED_RECORD_STORE.get(proxy)).getReplicationPublisher();
+    }
+
+    @SuppressWarnings("unchecked")
+    protected <K, V> AbstractReplicatedRecordStore<V> getReplicatedRecordStore(ReplicatedMap<K, V> map) throws Exception {
+        ReplicatedMapProxy<K, V> proxy = (ReplicatedMapProxy<K, V>) map;
+        return ((AbstractReplicatedRecordStore<V>) REPLICATED_RECORD_STORE.get(proxy));
     }
 
     @SuppressWarnings("unchecked")

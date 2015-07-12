@@ -92,6 +92,7 @@ public class ClientClusterServiceImpl extends ClusterListenerSupport {
         final Collection<Member> memberList = getMemberList();
         for (Member member : memberList) {
             if (uuid.equals(member.getUuid())) {
+                System.out.println("member = " + member);
                 return member;
             }
         }

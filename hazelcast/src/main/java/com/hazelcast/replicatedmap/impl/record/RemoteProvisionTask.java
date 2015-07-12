@@ -18,12 +18,12 @@ package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.core.Member;
 import com.hazelcast.nio.Address;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapInitChunkOperation;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
 import com.hazelcast.util.Clock;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,7 +36,7 @@ import java.util.List;
 final class RemoteProvisionTask<K, V>
         implements Runnable {
 
-    private final AbstractBaseReplicatedRecordStore<K, V> replicatedRecordStore;
+    private final AbstractBaseReplicatedRecordStore<V> replicatedRecordStore;
     private final OperationService operationService;
     private final Address callerAddress;
     private final int chunkSize;
@@ -44,7 +44,7 @@ final class RemoteProvisionTask<K, V>
     private ReplicatedRecord[] recordCache;
     private int recordCachePos;
 
-    RemoteProvisionTask(AbstractBaseReplicatedRecordStore<K, V> replicatedRecordStore, NodeEngine nodeEngine,
+    RemoteProvisionTask(AbstractBaseReplicatedRecordStore<V> replicatedRecordStore, NodeEngine nodeEngine,
                         Address callerAddress, int chunkSize) {
 
         this.replicatedRecordStore = replicatedRecordStore;
@@ -56,35 +56,31 @@ final class RemoteProvisionTask<K, V>
     @Override
     public void run() {
         recordCache = new ReplicatedRecord[chunkSize];
-        List<ReplicatedRecord<K, V>> replicatedRecords = new ArrayList<ReplicatedRecord<K, V>>(
+        List<ReplicatedRecord<V>> replicatedRecords = new ArrayList<ReplicatedRecord<V>>(
                 replicatedRecordStore.storage.values());
 
         for (int i = 0; i < replicatedRecords.size(); i++) {
-            ReplicatedRecord<K, V> replicatedRecord = replicatedRecords.get(i);
+            ReplicatedRecord<V> replicatedRecord = replicatedRecords.get(i);
             processReplicatedRecord(replicatedRecord, i == replicatedRecords.size() - 1);
         }
     }
 
-    private void processReplicatedRecord(ReplicatedRecord<K, V> replicatedRecord, boolean finalRecord) {
-        Object marshalledKey = replicatedRecordStore.marshallKey(replicatedRecord.getKeyInternal());
-        synchronized (replicatedRecordStore.getMutex(marshalledKey)) {
-            pushReplicatedRecord(replicatedRecord, finalRecord);
-        }
+    private void processReplicatedRecord(ReplicatedRecord<V> replicatedRecord, boolean finalRecord) {
+        pushReplicatedRecord(replicatedRecord, finalRecord);
     }
 
-    private void pushReplicatedRecord(ReplicatedRecord<K, V> replicatedRecord, boolean finalRecord) {
+    private void pushReplicatedRecord(ReplicatedRecord<V> replicatedRecord, boolean finalRecord) {
         if (recordCachePos == chunkSize) {
             sendChunk(finalRecord);
         }
 
         int hash = replicatedRecord.getLatestUpdateHash();
-        Object key = replicatedRecordStore.unmarshallKey(replicatedRecord.getKeyInternal());
-        Object value = replicatedRecordStore.unmarshallValue(replicatedRecord.getValueInternal());
-        VectorClockTimestamp vectorClockTimestamp = replicatedRecord.getVectorClockTimestamp();
+        Data key = replicatedRecord.getKeyInternal();
+        Object value = replicatedRecordStore.unmarshall(replicatedRecord.getValueInternal());
         long originalTtlMillis = replicatedRecord.getTtlMillis();
         long remainingTtlMillis = getRemainingTtl(replicatedRecord);
         if (originalTtlMillis == 0 || remainingTtlMillis > 0) {
-            recordCache[recordCachePos++] = new ReplicatedRecord(key, value, vectorClockTimestamp, hash, remainingTtlMillis);
+            recordCache[recordCachePos++] = new ReplicatedRecord(key, value, hash, remainingTtlMillis);
         }
 
         if (finalRecord) {
@@ -92,7 +88,7 @@ final class RemoteProvisionTask<K, V>
         }
     }
 
-    private long getRemainingTtl(ReplicatedRecord<K, V> replicatedRecord) {
+    private long getRemainingTtl(ReplicatedRecord<V> replicatedRecord) {
         long ttl = replicatedRecord.getTtlMillis();
         if (ttl != 0) {
             long updateTime = replicatedRecord.getUpdateTime();

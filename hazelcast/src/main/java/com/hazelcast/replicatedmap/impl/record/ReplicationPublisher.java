@@ -20,20 +20,18 @@ import com.hazelcast.cluster.ClusterService;
 import com.hazelcast.config.ReplicatedMapConfig;
 import com.hazelcast.core.Member;
 import com.hazelcast.core.OperationTimeoutException;
+import com.hazelcast.instance.HazelcastThreadGroup;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.logging.ILogger;
 import com.hazelcast.logging.Logger;
 import com.hazelcast.monitor.impl.LocalReplicatedMapStatsImpl;
 import com.hazelcast.nio.Address;
 import com.hazelcast.nio.serialization.Data;
-import com.hazelcast.replicatedmap.impl.PreReplicationHook;
 import com.hazelcast.replicatedmap.impl.ReplicatedMapService;
-import com.hazelcast.replicatedmap.impl.ReplicationChannel;
 import com.hazelcast.replicatedmap.impl.messages.MultiReplicationMessage;
 import com.hazelcast.replicatedmap.impl.messages.ReplicationMessage;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapClearOperation;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapPostJoinOperation;
-import com.hazelcast.spi.EventRegistration;
 import com.hazelcast.spi.EventService;
 import com.hazelcast.spi.ExecutionService;
 import com.hazelcast.spi.InternalCompletableFuture;
@@ -41,12 +39,12 @@ import com.hazelcast.spi.InvocationBuilder;
 import com.hazelcast.spi.NodeEngine;
 import com.hazelcast.spi.Operation;
 import com.hazelcast.spi.OperationService;
-import com.hazelcast.util.Clock;
-
+import com.hazelcast.spi.impl.NodeEngineImpl;
+import com.hazelcast.util.executor.StripedExecutor;
+import com.hazelcast.util.executor.StripedRunnable;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -58,11 +56,9 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * This class implements the actual replication logic for replicated map
  *
- * @param <K>
  * @param <V>
  */
-public class ReplicationPublisher<K, V>
-        implements ReplicationChannel {
+public class ReplicationPublisher<V> {
     private static final ILogger LOGGER = Logger.getLogger(ReplicationPublisher.class);
 
     private static final String SERVICE_NAME = ReplicatedMapService.SERVICE_NAME;
@@ -83,20 +79,20 @@ public class ReplicationPublisher<K, V>
     private final EventService eventService;
     private final NodeEngine nodeEngine;
 
-    private final AbstractBaseReplicatedRecordStore<K, V> replicatedRecordStore;
-    private final InternalReplicatedMapStorage<K, V> storage;
+    private final AbstractBaseReplicatedRecordStore<V> replicatedRecordStore;
+    private final InternalReplicatedMapStorage<V> storage;
     private final ReplicatedMapConfig replicatedMapConfig;
     private final LocalReplicatedMapStatsImpl mapStats;
     private final Member localMember;
     private final String name;
 
-    private final boolean allowReplicationHooks;
-    private volatile PreReplicationHook preReplicationHook;
+    private final ReplicatedMapService replicatedMapService;
+    private final StripedExecutor eventExecutor;
 
-    ReplicationPublisher(AbstractBaseReplicatedRecordStore<K, V> replicatedRecordStore, NodeEngine nodeEngine) {
+    ReplicationPublisher(AbstractBaseReplicatedRecordStore<V> replicatedRecordStore, NodeEngine nodeEngine) {
         this.replicatedRecordStore = replicatedRecordStore;
         this.nodeEngine = nodeEngine;
-
+        this.replicatedMapService = replicatedRecordStore.replicatedMapService;
         this.name = replicatedRecordStore.getName();
         this.storage = replicatedRecordStore.storage;
         this.mapStats = replicatedRecordStore.mapStats;
@@ -107,27 +103,19 @@ public class ReplicationPublisher<K, V>
         this.operationService = nodeEngine.getOperationService();
         this.replicatedMapConfig = replicatedRecordStore.replicatedMapConfig;
         this.executorService = getExecutorService(nodeEngine, replicatedMapConfig);
+        HazelcastThreadGroup threadGroup = ((NodeEngineImpl) nodeEngine).getNode().getHazelcastThreadGroup();
+        this.eventExecutor = new StripedExecutor(
+                nodeEngine.getLogger(ReplicationPublisher.class),
+                threadGroup.getThreadNamePrefix("replication-listener"),
+                threadGroup.getInternalThreadGroup(),
+                5,
+                10000000);
 
-        this.allowReplicationHooks = Boolean.parseBoolean(System.getProperty("hazelcast.repmap.hooks.allowed", "false"));
-    }
-
-    @Override
-    public void replicate(MultiReplicationMessage message) {
-        distributeReplicationMessage(message, true);
-    }
-
-    @Override
-    public void replicate(ReplicationMessage message) {
-        distributeReplicationMessage(message, true);
-    }
-
-    public void setPreReplicationHook(PreReplicationHook preReplicationHook) {
-        this.preReplicationHook = preReplicationHook;
     }
 
     public void publishReplicatedMessage(ReplicationMessage message) {
         if (replicatedMapConfig.getReplicationDelayMillis() == 0) {
-            distributeReplicationMessage(message, false);
+            distributeReplicationMessage(message);
         } else {
             replicationMessageCacheLock.lock();
             try {
@@ -152,7 +140,12 @@ public class ReplicationPublisher<K, V>
         if (localMember.equals(origin)) {
             return;
         }
-        executorService.execute(new Runnable() {
+        eventExecutor.execute(new StripedRunnable() {
+            @Override
+            public int getKey() {
+                return update.getPartitionId();
+            }
+
             @Override
             public void run() {
                 processUpdateMessage(update);
@@ -188,29 +181,16 @@ public class ReplicationPublisher<K, V>
             replicationMessageCacheLock.unlock();
         }
         if (replicationMessages != null) {
-            MultiReplicationMessage message = new MultiReplicationMessage(name, replicationMessages);
-            distributeReplicationMessage(message, false);
+            for (ReplicationMessage replicationMessage : replicationMessages) {
+                distributeReplicationMessage(replicationMessage);
+            }
+//            MultiReplicationMessage message = new MultiReplicationMessage(name, replicationMessages);
+//            distributeReplicationMessage(message);
         }
     }
 
-    void distributeReplicationMessage(final Object message, final boolean forceSend) {
-        final PreReplicationHook preReplicationHook = getPreReplicationHook();
-        if (forceSend || preReplicationHook == null) {
-            Collection<EventRegistration> eventRegistrations = eventService.getRegistrations(SERVICE_NAME, EVENT_TOPIC_NAME);
-            Collection<EventRegistration> registrations = filterEventRegistrations(eventRegistrations);
-            eventService.publishEvent(ReplicatedMapService.SERVICE_NAME, registrations, message, name.hashCode());
-        } else {
-            executionService.execute(EXECUTOR_NAME, new Runnable() {
-                @Override
-                public void run() {
-                    if (message instanceof MultiReplicationMessage) {
-                        preReplicationHook.preReplicateMultiMessage((MultiReplicationMessage) message, ReplicationPublisher.this);
-                    } else {
-                        preReplicationHook.preReplicateMessage((ReplicationMessage) message, ReplicationPublisher.this);
-                    }
-                }
-            });
-        }
+    void distributeReplicationMessage(final ReplicationMessage message) {
+        eventService.publishEvent(ReplicatedMapService.SERVICE_NAME, EVENT_TOPIC_NAME, message, message.getKey().hashCode());
     }
 
     public void queuePreProvision(Address callerAddress, int chunkSize) {
@@ -300,105 +280,38 @@ public class ReplicationPublisher<K, V>
     }
 
     private void processUpdateMessage(ReplicationMessage update) {
-        if (localMember.equals(update.getOrigin())) {
-            return;
-        }
         mapStats.incrementReceivedReplicationEvents();
-        if (update.getKey() instanceof String) {
-            String key = (String) update.getKey();
-            if (AbstractReplicatedRecordStore.CLEAR_REPLICATION_MAGIC_KEY.equals(key)) {
+        Object key = replicatedMapService.toObject(update.getKey());
+        if (key instanceof String) {
+            String stringKey = (String) key;
+            if (AbstractReplicatedRecordStore.CLEAR_REPLICATION_MAGIC_KEY.equals(stringKey)) {
                 storage.clear();
                 return;
             }
         }
 
-        K marshalledKey = (K) replicatedRecordStore.marshallKey(update.getKey());
-        synchronized (replicatedRecordStore.getMutex(marshalledKey)) {
-            final ReplicatedRecord<K, V> localEntry = storage.get(marshalledKey);
-            if (localEntry == null) {
-                createLocalEntry(update, marshalledKey);
-            } else {
-                updateLocalEntry(localEntry, update);
-            }
-        }
-    }
-
-    private void updateLocalEntry(ReplicatedRecord<K, V> localEntry, ReplicationMessage update) {
-        final VectorClockTimestamp currentVectorClockTimestamp = localEntry.getVectorClockTimestamp();
-        final VectorClockTimestamp updateVectorClockTimestamp = update.getVectorClockTimestamp();
-        if (isOldTombstone(localEntry)) {
-            // the tombstone has been created quite some ago. we are going to accept the update regardless of its clock
-            // chances are the tombstone on a source node already expired and its clocked were reset
-            applyTheUpdate(update, localEntry);
-        } else if (VectorClockTimestamp.happenedBefore(currentVectorClockTimestamp, updateVectorClockTimestamp)) {
-            // A new update happened
-            applyTheUpdate(update, localEntry);
-        } else if (VectorClockTimestamp.happenedBefore(updateVectorClockTimestamp, currentVectorClockTimestamp)) {
-            // ignore the update. This is an old update
-            return;
-        } else if (!updateVectorClockTimestamp.equals(currentVectorClockTimestamp)) {
-            if (localEntry.getLatestUpdateHash() >= update.getUpdateHash()) {
-                applyTheUpdate(update, localEntry);
-            } else {
-                VectorClockTimestamp newTimestamp = localEntry
-                        .applyAndIncrementVectorClock(updateVectorClockTimestamp, localMember);
-
-                Object key = update.getKey();
-                V v = localEntry.getValueInternal();
-                V value = v instanceof Data ? (V) nodeEngine.toObject(v) : v;
-                long ttlMillis = update.getTtlMillis();
-                int latestUpdateHash = localEntry.getLatestUpdateHash();
-                ReplicationMessage message = new ReplicationMessage(name, key, value, newTimestamp, localMember,
-                        latestUpdateHash, ttlMillis);
-
-                distributeReplicationMessage(message, true);
-            }
+        final ReplicatedRecord<V> localEntry = storage.get(update.getKey());
+        if (localEntry == null) {
+            createLocalEntry(update, update.getKey());
         } else {
-            LOGGER.finest("Received an update with the same state of vector clock I currently have. "
-                    + "This can happened during initialization. Ignoring the update.");
+            updateLocalEntry(localEntry, update);
         }
     }
 
-    private boolean isOldTombstone(ReplicatedRecord<K, V> localEntry) {
-        if (!localEntry.isTombstone()) {
-            return false;
-        }
-        long updateTime = localEntry.getUpdateTime();
-        long threshold = updateTime + (AbstractReplicatedRecordStore.TOMBSTONE_REMOVAL_PERIOD_MS / 2);
-        return Clock.currentTimeMillis() > threshold;
-    }
 
-    private void createLocalEntry(ReplicationMessage update, K marshalledKey) {
-        V marshalledValue = (V) replicatedRecordStore.marshallValue(update.getValue());
-        VectorClockTimestamp timestamp = update.getVectorClockTimestamp();
-        int updateHash = update.getUpdateHash();
-        long ttlMillis = update.getTtlMillis();
-        storage.put(marshalledKey,
-                new ReplicatedRecord<K, V>(marshalledKey, marshalledValue, timestamp, updateHash, ttlMillis));
-        if (ttlMillis > 0) {
-            replicatedRecordStore.scheduleTtlEntry(ttlMillis, marshalledKey, marshalledValue);
-        } else {
-            replicatedRecordStore.cancelTtlEntry(marshalledKey);
-        }
-        replicatedRecordStore.fireEntryListenerEvent(update.getKey(), null, update.getValue());
-    }
-
-    private void applyTheUpdate(ReplicationMessage<K, V> update, ReplicatedRecord<K, V> localEntry) {
-        VectorClockTimestamp remoteVectorClockTimestamp = update.getVectorClockTimestamp();
-        K marshalledKey = (K) replicatedRecordStore.marshallKey(update.getKey());
-        V marshalledValue = (V) replicatedRecordStore.marshallValue(update.getValue());
+    private void updateLocalEntry(ReplicatedRecord<V> localEntry, ReplicationMessage update) {
+        V marshalledValue = (V) replicatedRecordStore.marshall(update.getValue());
         long ttlMillis = update.getTtlMillis();
         long oldTtlMillis = localEntry.getTtlMillis();
-        Object oldValue = localEntry.setValueInternal(marshalledValue, update.getUpdateHash(), ttlMillis);
+        Object oldValue = localEntry.setValueInternal(marshalledValue, update.getPartitionId(), ttlMillis);
 
-        localEntry.applyVectorClock(remoteVectorClockTimestamp);
         if (ttlMillis > 0 || update.isRemove()) {
-            replicatedRecordStore.scheduleTtlEntry(ttlMillis, marshalledKey, null);
+            replicatedRecordStore.scheduleTtlEntry(ttlMillis, update.getKey(), null);
         } else {
-            replicatedRecordStore.cancelTtlEntry(marshalledKey);
+            replicatedRecordStore.cancelTtlEntry(update.getKey());
         }
 
-        V unmarshalledOldValue = (V) replicatedRecordStore.unmarshallValue(oldValue);
+        V unmarshalledOldValue = (V) replicatedRecordStore.unmarshall(oldValue);
         if (unmarshalledOldValue == null || !unmarshalledOldValue.equals(update.getValue())
                 || update.getTtlMillis() != oldTtlMillis) {
 
@@ -406,25 +319,19 @@ public class ReplicationPublisher<K, V>
         }
     }
 
-    private Collection<EventRegistration> filterEventRegistrations(Collection<EventRegistration> eventRegistrations) {
-        Address address = ((MemberImpl) localMember).getAddress();
-        List<EventRegistration> registrations = new ArrayList<EventRegistration>(eventRegistrations);
-        Iterator<EventRegistration> iterator = registrations.iterator();
-        while (iterator.hasNext()) {
-            EventRegistration registration = iterator.next();
-            if (address.equals(registration.getSubscriber())) {
-                iterator.remove();
-            }
+    private void createLocalEntry(ReplicationMessage update, Data key) {
+        V marshalledValue = (V) replicatedRecordStore.marshall(update.getValue());
+        int updateHash = update.getPartitionId();
+        long ttlMillis = update.getTtlMillis();
+        storage.put(key, new ReplicatedRecord<V>(key, marshalledValue, updateHash, ttlMillis));
+        if (ttlMillis > 0) {
+            replicatedRecordStore.scheduleTtlEntry(ttlMillis, key, marshalledValue);
+        } else {
+            replicatedRecordStore.cancelTtlEntry(key);
         }
-        return registrations;
+        replicatedRecordStore.fireEntryListenerEvent(update.getKey(), null, update.getValue());
     }
 
-    private PreReplicationHook getPreReplicationHook() {
-        if (!allowReplicationHooks) {
-            return null;
-        }
-        return preReplicationHook;
-    }
 
     private ScheduledExecutorService getExecutorService(NodeEngine nodeEngine, ReplicatedMapConfig replicatedMapConfig) {
         ScheduledExecutorService es = replicatedMapConfig.getReplicatorExecutorService();

@@ -17,13 +17,11 @@
 package com.hazelcast.replicatedmap.impl.record;
 
 import com.hazelcast.replicatedmap.impl.record.LazySet.IteratorFactory;
-
 import java.util.Iterator;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
-class ValuesIteratorFactory<K, V>
-        implements IteratorFactory<K, V, V> {
+class ValuesIteratorFactory<K, V> implements IteratorFactory<K, V, V> {
 
     private final ReplicatedRecordStore recordStore;
 
@@ -32,18 +30,18 @@ class ValuesIteratorFactory<K, V>
     }
 
     @Override
-    public Iterator<V> create(final Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator) {
+    public Iterator<V> create(final Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator) {
         return new ValuesIterator(iterator);
     }
 
     private final class ValuesIterator
             implements Iterator<V> {
 
-        private final Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator;
+        private final Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator;
 
-        private Map.Entry<K, ReplicatedRecord<K, V>> entry;
+        private Map.Entry<K, ReplicatedRecord<V>> entry;
 
-        public ValuesIterator(Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator) {
+        public ValuesIterator(Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator) {
             this.iterator = iterator;
         }
 
@@ -60,13 +58,13 @@ class ValuesIteratorFactory<K, V>
 
         @Override
         public V next() {
-            Map.Entry<K, ReplicatedRecord<K, V>> entry = this.entry;
+            Map.Entry<K, ReplicatedRecord<V>> entry = this.entry;
             Object value = entry != null && entry.getValue() != null ? entry.getValue().getValue() : null;
 
             while (entry == null) {
                 entry = findNextEntry();
 
-                ReplicatedRecord<K, V> record = entry.getValue();
+                ReplicatedRecord<V> record = entry.getValue();
                 value = record != null ? record.getValue() : null;
 
                 if (value != null) {
@@ -79,7 +77,7 @@ class ValuesIteratorFactory<K, V>
                 throw new NoSuchElementException();
             }
 
-            value = recordStore.unmarshallValue(value);
+            value = recordStore.unmarshall(value);
             return (V) value;
         }
 
@@ -88,12 +86,12 @@ class ValuesIteratorFactory<K, V>
             throw new UnsupportedOperationException("Lazy structures are not modifiable");
         }
 
-        private boolean testEntry(Map.Entry<K, ReplicatedRecord<K, V>> entry) {
+        private boolean testEntry(Map.Entry<K, ReplicatedRecord<V>> entry) {
             return entry.getKey() != null && entry.getValue() != null && !entry.getValue().isTombstone();
         }
 
-        private Map.Entry<K, ReplicatedRecord<K, V>> findNextEntry() {
-            Map.Entry<K, ReplicatedRecord<K, V>> entry = null;
+        private Map.Entry<K, ReplicatedRecord<V>> findNextEntry() {
+            Map.Entry<K, ReplicatedRecord<V>> entry = null;
             while (iterator.hasNext()) {
                 entry = iterator.next();
                 if (testEntry(entry)) {

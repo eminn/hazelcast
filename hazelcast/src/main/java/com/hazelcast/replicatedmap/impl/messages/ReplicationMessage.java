@@ -20,39 +20,33 @@ import com.hazelcast.core.Member;
 import com.hazelcast.instance.MemberImpl;
 import com.hazelcast.nio.ObjectDataInput;
 import com.hazelcast.nio.ObjectDataOutput;
+import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.nio.serialization.IdentifiedDataSerializable;
 import com.hazelcast.replicatedmap.impl.operation.ReplicatedMapDataSerializerHook;
-import com.hazelcast.replicatedmap.impl.record.VectorClockTimestamp;
-
 import java.io.IOException;
 
 /**
  * This replication message is used for sending over a replication event to another node
- *
- * @param <K> key type
- * @param <V> value type
  */
-public class ReplicationMessage<K, V>
+public class ReplicationMessage
         implements IdentifiedDataSerializable {
 
     private String name;
-    private K key;
-    private V value;
-    private VectorClockTimestamp vectorClockTimestamp;
+    private Data key;
+    private Data value;
     private Member origin;
-    private int updateHash;
+    private int partitionId;
     private long ttlMillis;
 
     public ReplicationMessage() {
     }
 
-    public ReplicationMessage(String name, K key, V v, VectorClockTimestamp timestamp, Member origin, int hash, long ttlMillis) {
+    public ReplicationMessage(String name, Data key, Data v, Member origin, int partitionId, long ttlMillis) {
         this.name = name;
         this.key = key;
         this.value = v;
-        this.vectorClockTimestamp = timestamp;
         this.origin = origin;
-        this.updateHash = hash;
+        this.partitionId = partitionId;
         this.ttlMillis = ttlMillis;
     }
 
@@ -60,17 +54,14 @@ public class ReplicationMessage<K, V>
         return name;
     }
 
-    public K getKey() {
+    public Data getKey() {
         return key;
     }
 
-    public V getValue() {
+    public Data getValue() {
         return value;
     }
 
-    public VectorClockTimestamp getVectorClockTimestamp() {
-        return vectorClockTimestamp;
-    }
 
     public Member getOrigin() {
         return origin;
@@ -80,8 +71,8 @@ public class ReplicationMessage<K, V>
         return ttlMillis;
     }
 
-    public int getUpdateHash() {
-        return updateHash;
+    public int getPartitionId() {
+        return partitionId;
     }
 
     public boolean isRemove() {
@@ -91,24 +82,21 @@ public class ReplicationMessage<K, V>
     public void writeData(ObjectDataOutput out)
             throws IOException {
         out.writeUTF(name);
-        out.writeObject(key);
-        out.writeObject(value);
-        vectorClockTimestamp.writeData(out);
+        out.writeData(key);
+        out.writeData(value);
         origin.writeData(out);
-        out.writeInt(updateHash);
+        out.writeInt(partitionId);
         out.writeLong(ttlMillis);
     }
 
     public void readData(ObjectDataInput in)
             throws IOException {
         name = in.readUTF();
-        key = (K) in.readObject();
-        value = (V) in.readObject();
-        vectorClockTimestamp = new VectorClockTimestamp();
-        vectorClockTimestamp.readData(in);
+        key = in.readData();
+        value = in.readData();
         origin = new MemberImpl();
         origin.readData(in);
-        updateHash = in.readInt();
+        partitionId = in.readInt();
         ttlMillis = in.readLong();
     }
 
@@ -124,8 +112,7 @@ public class ReplicationMessage<K, V>
 
     @Override
     public String toString() {
-        return "ReplicationMessage{" + "key=" + key + ", value=" + value + ", vectorClockTimestamp=" + vectorClockTimestamp
-                + ", origin=" + origin + ", updateHash=" + updateHash + ", ttlMillis=" + ttlMillis + '}';
+        return "ReplicationMessage{" + "key=" + key + ", value=" + value + ", origin=" + origin + ", updateHash=" + partitionId + ", ttlMillis=" + ttlMillis + '}';
     }
 
 }

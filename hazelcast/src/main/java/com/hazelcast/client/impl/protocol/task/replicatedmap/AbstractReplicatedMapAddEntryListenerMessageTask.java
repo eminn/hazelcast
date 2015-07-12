@@ -22,6 +22,7 @@ import com.hazelcast.core.EntryEvent;
 import com.hazelcast.core.EntryListener;
 import com.hazelcast.core.MapEvent;
 import com.hazelcast.instance.Node;
+import com.hazelcast.map.impl.DataAwareEntryEvent;
 import com.hazelcast.nio.Connection;
 import com.hazelcast.nio.serialization.Data;
 import com.hazelcast.query.Predicate;
@@ -34,7 +35,7 @@ import java.security.Permission;
 
 public abstract class AbstractReplicatedMapAddEntryListenerMessageTask<Parameter>
         extends AbstractCallableMessageTask<Parameter>
-        implements EntryListener<Object, Object> {
+        implements EntryListener {
 
     public AbstractReplicatedMapAddEntryListenerMessageTask(ClientMessage clientMessage, Node node, Connection connection) {
         super(clientMessage, node, connection);
@@ -76,13 +77,17 @@ public abstract class AbstractReplicatedMapAddEntryListenerMessageTask<Parameter
 
     public abstract Data getKey();
 
-    private void handleEvent(EntryEvent<Object, Object> event) {
+    private void handleEvent(EntryEvent event) {
         if (endpoint.isAlive()) {
-            Data key = serializationService.toData(event.getKey());
-            Data newValue = serializationService.toData(event.getValue());
-            Data oldValue = serializationService.toData(event.getOldValue());
-            Data mergingValue = serializationService.toData(event.getMergingValue());
-
+            if (!(event instanceof DataAwareEntryEvent)) {
+                throw new IllegalArgumentException(
+                        "Expecting: DataAwareEntryEvent, Found: " + event.getClass().getSimpleName());
+            }
+            DataAwareEntryEvent dataAwareEntryEvent = (DataAwareEntryEvent) event;
+            Data key = dataAwareEntryEvent.getKeyData();
+            Data newValue = dataAwareEntryEvent.getNewValueData();
+            Data oldValue = dataAwareEntryEvent.getOldValueData();
+            Data mergingValue = dataAwareEntryEvent.getMergingValueData();
             ClientMessage clientMessage = encodeEvent(key
                     , newValue, oldValue, mergingValue, event.getEventType().getType(),
                     event.getMember().getUuid(), 1);
@@ -94,22 +99,22 @@ public abstract class AbstractReplicatedMapAddEntryListenerMessageTask<Parameter
                                                  Data mergingValue, int type, String uuid, int numberOfAffectedEntries);
 
     @Override
-    public void entryAdded(EntryEvent<Object, Object> event) {
+    public void entryAdded(EntryEvent event) {
         handleEvent(event);
     }
 
     @Override
-    public void entryRemoved(EntryEvent<Object, Object> event) {
+    public void entryRemoved(EntryEvent event) {
         handleEvent(event);
     }
 
     @Override
-    public void entryUpdated(EntryEvent<Object, Object> event) {
+    public void entryUpdated(EntryEvent event) {
         handleEvent(event);
     }
 
     @Override
-    public void entryEvicted(EntryEvent<Object, Object> event) {
+    public void entryEvicted(EntryEvent event) {
         handleEvent(event);
     }
 

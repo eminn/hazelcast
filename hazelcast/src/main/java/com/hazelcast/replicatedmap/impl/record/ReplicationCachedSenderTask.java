@@ -19,15 +19,14 @@ package com.hazelcast.replicatedmap.impl.record;
 /**
  * Simple runnable task to run in the background and execute the actual replication
  *
- * @param <K> key type
  * @param <V> value type
  */
-class ReplicationCachedSenderTask<K, V>
+class ReplicationCachedSenderTask<V>
         implements Runnable {
 
-    private final ReplicationPublisher<K, V> replicationPublisher;
+    private final ReplicationPublisher<V> replicationPublisher;
 
-    ReplicationCachedSenderTask(ReplicationPublisher<K, V> replicationPublisher) {
+    ReplicationCachedSenderTask(ReplicationPublisher<V> replicationPublisher) {
         this.replicationPublisher = replicationPublisher;
     }
 

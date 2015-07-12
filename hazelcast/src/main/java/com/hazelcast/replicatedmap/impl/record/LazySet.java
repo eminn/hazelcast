@@ -24,13 +24,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-class LazySet<K, V, R>
-        implements Set<R> {
+class LazySet<K, V, R> implements Set<R> {
 
-    private final InternalReplicatedMapStorage<K, V> storage;
+    private final InternalReplicatedMapStorage<V> storage;
     private final IteratorFactory<K, V, R> iteratorFactory;
 
-    public LazySet(IteratorFactory<K, V, R> iteratorFactory, InternalReplicatedMapStorage<K, V> storage) {
+    public LazySet(IteratorFactory<K, V, R> iteratorFactory, InternalReplicatedMapStorage<V> storage) {
 
         this.iteratorFactory = iteratorFactory;
         this.storage = storage;
@@ -53,7 +52,7 @@ class LazySet<K, V, R>
 
     @Override
     public Iterator<R> iterator() {
-        final Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator = storage.entrySet().iterator();
+        final Iterator iterator = storage.entrySet().iterator();
         return iteratorFactory.create(iterator);
     }
 
@@ -119,7 +118,7 @@ class LazySet<K, V, R>
     }
 
     public interface IteratorFactory<K, V, R> {
-        Iterator<R> create(Iterator<Map.Entry<K, ReplicatedRecord<K, V>>> iterator);
+        Iterator<R> create(Iterator<Map.Entry<K, ReplicatedRecord<V>>> iterator);
     }
 
 }
