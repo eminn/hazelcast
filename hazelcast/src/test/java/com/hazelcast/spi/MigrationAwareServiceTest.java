@@ -142,7 +142,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private void testPartitionDataSize_whenBackupNodesTerminated(int backupCount) throws InterruptedException {
         Config config = getConfig(backupCount);
 
-        startNodes(config, backupCount + 2);
+        startNodes(config, backupCount + 4);
         HazelcastInstance hz = factory.getAllHazelcastInstances().iterator().next();
         fill(hz);
         assertSize(backupCount);
