@@ -31,6 +31,7 @@ import com.hazelcast.test.HazelcastTestSupport;
 import com.hazelcast.test.TestHazelcastInstanceFactory;
 import com.hazelcast.test.annotation.ParallelTest;
 import com.hazelcast.test.annotation.QuickTest;
+import com.hazelcast.test.annotation.Repeat;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -120,16 +121,19 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
         assertSize(backupCount);
     }
 
+    @Repeat(100)
     @Test
     public void testPartitionDataSize_whenBackupNodesTerminated_withSingleBackup() throws InterruptedException {
         testPartitionDataSize_whenBackupNodesTerminated(1);
     }
 
+    @Repeat(100)
     @Test
     public void testPartitionDataSize_whenBackupNodesTerminated_withTwoBackups() throws InterruptedException {
         testPartitionDataSize_whenBackupNodesTerminated(2);
     }
 
+    @Repeat(100)
     @Test
     public void testPartitionDataSize_whenBackupNodesTerminated_withThreeBackups() throws InterruptedException {
         testPartitionDataSize_whenBackupNodesTerminated(3);
@@ -138,7 +142,7 @@ public class MigrationAwareServiceTest extends HazelcastTestSupport {
     private void testPartitionDataSize_whenBackupNodesTerminated(int backupCount) throws InterruptedException {
         Config config = getConfig(backupCount);
 
-        startNodes(config, backupCount + 4);
+        startNodes(config, backupCount + 2);
         HazelcastInstance hz = factory.getAllHazelcastInstances().iterator().next();
         fill(hz);
         assertSize(backupCount);
