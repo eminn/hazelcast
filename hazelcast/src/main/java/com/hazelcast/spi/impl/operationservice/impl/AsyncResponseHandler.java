@@ -30,9 +30,9 @@ import com.hazelcast.spi.properties.HazelcastProperty;
 import com.hazelcast.util.concurrent.BackoffIdleStrategy;
 import com.hazelcast.util.concurrent.BusySpinIdleStrategy;
 import com.hazelcast.util.concurrent.IdleStrategy;
-
 import java.util.concurrent.BlockingQueue;
 
+import static com.hazelcast.classloader.DistributedClassLoader.isClassNotFoundException;
 import static com.hazelcast.instance.OutOfMemoryErrorDispatcher.inspectOutOfMemoryError;
 import static com.hazelcast.internal.metrics.ProbeLevel.MANDATORY;
 import static com.hazelcast.nio.Packet.FLAG_OP;
@@ -45,11 +45,11 @@ import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
 /**
  * The AsyncResponsePacketHandler is a PacketHandler that asynchronously process operation-response packets.
- *
+ * <p>
  * So when a response is received from a remote system, it is put in the responseQueue of the ResponseThread.
  * Then the ResponseThread takes it from this responseQueue and calls the {@link PacketHandler} for the
  * actual processing.
- *
+ * <p>
  * The reason that the IO thread doesn't immediately deals with the response is that deserializing the
  * {@link com.hazelcast.spi.impl.operationservice.impl.responses.Response} and let the invocation-future
  * deal with the response can be rather expensive currently.
@@ -150,6 +150,10 @@ public class AsyncResponseHandler implements PacketHandler, MetricsProvider {
                 try {
                     responsePacketHandler.handle(response);
                 } catch (Throwable e) {
+                    if (isClassNotFoundException(e)) {
+
+                        System.err.println("MADAFAKAAAA");
+                    }
                     inspectOutOfMemoryError(e);
                     logger.severe("Failed to process response: " + response + " on:" + getName(), e);
                 }

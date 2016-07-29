@@ -16,6 +16,7 @@
 
 package com.hazelcast.instance;
 
+import com.hazelcast.classloader.DistributedClassLoader;
 import com.hazelcast.client.impl.ClientEngineImpl;
 import com.hazelcast.cluster.ClusterState;
 import com.hazelcast.cluster.Joiner;
@@ -145,6 +146,7 @@ public class Node {
     private volatile NodeState state;
 
     private volatile Address masterAddress;
+    private final DistributedClassLoader distributedClassLoader;
 
     @SuppressWarnings("checkstyle:executablestatementcount")
     public Node(HazelcastInstanceImpl hazelcastInstance, Config config, NodeContext nodeContext) {
@@ -172,7 +174,8 @@ public class Node {
                     hazelcastInstance, memberAttributes, liteMember);
             loggingService.setThisMember(localMember);
             logger = loggingService.getLogger(Node.class.getName());
-            hazelcastThreadGroup = new HazelcastThreadGroup(hazelcastInstance.getName(), logger, configClassLoader);
+            distributedClassLoader = new DistributedClassLoader(config.getClassLoader());
+            hazelcastThreadGroup = new HazelcastThreadGroup(hazelcastInstance.getName(), logger, distributedClassLoader);
 
             this.nodeExtension = createNodeExtension(nodeContext);
             nodeExtension.printNodeInfo();
@@ -373,6 +376,7 @@ public class Node {
         }
         nodeExtension.afterStart();
         phoneHome.check(this, getBuildInfo().getVersion(), buildInfo.isEnterprise());
+        distributedClassLoader.setNodeEngine(nodeEngine);
     }
 
     @SuppressWarnings("checkstyle:npathcomplexity")
